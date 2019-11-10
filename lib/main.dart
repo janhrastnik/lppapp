@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:beautifulsoup/beautifulsoup.dart';
+import 'dart:convert';
 
 void main() => runApp(MyApp());
 String url = "https://www.lpp.si/";
@@ -29,111 +30,108 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   String html = "";
-  List links = List();
+  
+  Future<http.Response> getRoutesGroups() {
+    return http.get("http://data.lpp.si/routes/getRouteGroups");
+  }
+
+  Future<http.Response> getRoutes(routeNumber) {
+    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+  }
+
+  Future<http.Response> getRouteStations(routeId) {
+    return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_id=$routeId");
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: Column(
-          children: <Widget>[
-            RaisedButton(
-                child: Text("get lpp site html"),
-                onPressed: () {
-                  http.read(url + "javni-prevoz/vozni-redi").then((data) {
-                    setState(() {
-                      html = data;
-                      var soup = Beautifulsoup(html);
-                      Iterable l = Iterable.empty();
-
-                      l = soup.find_all("tr").map((e) => e.children).where((e) => e.length == 2);
-                      for (List i in l) {
-                        links.add([i.first.text, i.last.text, i.last.children.first.attributes["href"]]);
-                      }
-
-                    });
-                  });
-                }),
-            Expanded(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: links.length,
-                itemBuilder: (BuildContext context, int index) => ListTile(
-                  leading: Text(links[index][0]),
-                  title: Text(links[index][1]),
-                  onTap: () {
-                    print(links[index][2]);
-                    Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (BuildContext context) => Postaje(linija: links[index][2])
-                        )
-                    );
-                  },
-                ),
-                separatorBuilder: (BuildContext context, int index) => Divider(height: 0.0, color: Colors.black54),
-              ),
-            )
-          ],
+        child: FutureBuilder(
+            future: getRoutesGroups(),
+            builder: (BuildContext context, AsyncSnapshot snapshot) {
+              if (snapshot.hasData) {
+                List decodedData = jsonDecode(snapshot.data.body)["data"];
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: decodedData.length,
+                  itemBuilder: (BuildContext context, int index) => ExpansionTile(
+                    title: Text(decodedData[index].toString()),
+                    children: <Widget>[
+                      FutureBuilder(
+                        future: getRoutes(decodedData[index]["name"]),
+                        builder: (BuildContext context, AsyncSnapshot snapshot) {
+                          if (snapshot.hasData) {
+                            List routesList = jsonDecode(snapshot.data.body)["data"];
+                            return ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: routesList.length,
+                                itemBuilder: (BuildContext context, int index) => ListTile(
+                                  title: Text(routesList[index]["route_parent_id"]),
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                          builder: (BuildContext context) => Station(routeId: routesList[index]["int_id"])
+                                      )
+                                    );
+                                  },
+                                )
+                            );
+                          } else {
+                            return Text("no data");
+                          }
+                        },
+                      )
+                    ],
+                  ),
+                );
+              } else {
+                return Text("no data");
+              }
+            }
         ),
       ),
     );
   }
 }
 
-class Postaje extends StatefulWidget {
-  Postaje({Key key, this.linija}) : super(key: key);
+class Station extends StatefulWidget {
+  Station({Key key, this.routeId, this.reverseRouteId}) : super(key: key);
 
-  final String linija;
+  int routeId;
+  int reverseRouteId;
 
   @override
-  PostajeState createState() => PostajeState();
+  StationState createState() => StationState();
 }
 
-class PostajeState extends State<Postaje> {
-  String html = "";
-  List linija1 = List();
-  List linija2 = List();
+class StationState extends State<Station> {
 
-  @override
-  void initState() {
-    super.initState();
-    http.read(url + widget.linija).then((data) {
-      setState(() {
-        html = data;
-        var soup = Beautifulsoup(html);
-        Iterable divs = Iterable.empty();
-
-        divs = soup.find_all("div").where((e) => e.attributes.containsValue("col-md-6")).map((e) => e.children).toList().sublist(0, 2);
-
-        linija1 = divs.first;
-        linija2 = divs.last;
-
-      });
-    });
+  Future<http.Response> getStations(id) {
+    return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
-        children: <Widget>[
-          Expanded(
-            child: ListView.builder(
-                itemCount: linija1.length,
-                itemBuilder: (BuildContext context, int index) => ListTile(
-                  title: Text(linija1[index].text),
-                ),
-            ),
-          ),
-          Expanded(
-              child: ListView.builder(
-                  itemCount: linija2.length,
+      body: FutureBuilder(
+          future: getStations(widget.routeId),
+          builder: (BuildContext context, AsyncSnapshot snapshot) {
+            if (snapshot.hasData) {
+              //TODO: add sorting
+              List stationsList = jsonDecode(snapshot.data.body)["data"];
+              print(stationsList.toString());
+              return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: stationsList.length,
                   itemBuilder: (BuildContext context, int index) => ListTile(
-                    title: Text(linija2[index].text),
-                  ),
-              )
-          )
-        ],
+                    title: Text(stationsList[index]["name"]),
+                  )
+              );
+            } else {
+              return Text("no data");
+            }
+          }
       )
     );
   }
