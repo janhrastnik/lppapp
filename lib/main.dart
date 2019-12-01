@@ -184,18 +184,31 @@ class SplashPage extends StatefulWidget {
 }
 
 class SplashPageState extends State<SplashPage> {
+  Map routeGroups;
 
   Future<http.Response> getRouteGroups() {
     return http.get("http://data.lpp.si/routes/getRouteGroups");
   }
 
-  Future<http.Response> getRoutes(routeNumber) {
-    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+  Future<void> getRoutes(routeNumber) async {
+    await http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+  }
+
+  Future<List<void>> getData() async {
+    http.Response data = await getRouteGroups();
+    List routeGroupsList = jsonDecode(data.body)["data"];
+    routeGroupsList.forEach((e) => routeGroups[e["name"]] = null);
+    return Future.wait(
+      routeGroupsList.map((e) => getRoutes(e["name"]))
+    );
   }
 
   @override
   void initState() {
     super.initState();
+    getData().then((data) {
+      print(data.toString());
+    });
   }
 
   @override
