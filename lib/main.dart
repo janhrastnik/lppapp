@@ -1,6 +1,8 @@
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:collection/collection.dart' as collection;
 
 void main() => runApp(MyApp());
 String url = "https://www.lpp.si/";
@@ -13,95 +15,53 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: MyHomePage(title: ";-;",),
+      home: SplashPage()
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key, this.title}) : super(key: key);
+class RouteList extends StatefulWidget {
+  RouteList({Key key, this.routes}) : super(key: key);
 
-  final String title;
+  final Map routes;
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  RouteListState createState() => RouteListState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  String html = "";
+class RouteListState extends State<RouteList> {
   
-  Future<http.Response> getRouteGroups() {
-    return http.get("http://data.lpp.si/routes/getRouteGroups");
-  }
-
-  Future<http.Response> getRoutes(routeNumber) {
-    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
-  }
+  
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: FutureBuilder(
-            future: getRouteGroups(),
-            builder: (BuildContext context, AsyncSnapshot snapshot) {
-              if (snapshot.hasData) {
-                List routeGroupsList = jsonDecode(snapshot.data.body)["data"];
-                routeGroupsList.sort((a, b) => int.parse(a["name"], radix: 30).compareTo(int.parse(b["name"], radix: 30)));
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: routeGroupsList.length,
-                  itemBuilder: (BuildContext context, int index) => ExpansionTile(
-                    title: Text(routeGroupsList[index]["name"].toString()),
-                    children: <Widget>[
-                      FutureBuilder(
-                        future: getRoutes(routeGroupsList[index]["name"]),
-                        builder: (BuildContext context, AsyncSnapshot snapshot) {
-                          if (snapshot.hasData) {
-                            List routesList = jsonDecode(snapshot.data.body)["data"];
-                            return ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: routesList.length,
-                                itemBuilder: (BuildContext context, int index) => ListTile(
-                                  title: Text(routesList[index]["parent_name"]),
-                                  onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                          builder: (BuildContext context) => Station(routeId: routesList[index]["int_id"])
-                                      )
-                                    );
-                                  },
-                                )
-                            );
-                          } else {
-                            return Text("no data");
-                          }
-                        },
-                      )
-                    ],
-                  ),
-                );
-              } else {
-                return Text("no data");
-              }
-            }
-        ),
-      ),
+      body: ListView.builder(
+          itemCount: widget.routes.length,
+          itemBuilder: (BuildContext context, int index) {
+            String routeGroup = widget.routes.keys.toList()[index];
+            List routeNames = widget.routes[routeGroup];
+            return ExpansionTile(
+              title: Text(routeGroup),
+              children: routeNames.map((route) => Text(route[0])).toList(),
+            );
+          }
+              
+      )
     );
   }
 }
 
-class Station extends StatefulWidget {
-  Station({Key key, this.routeId, this.reverseRouteId}) : super(key: key);
+class Route extends StatefulWidget {
+  Route({Key key, this.routeId}) : super(key: key);
 
   int routeId;
-  int reverseRouteId;
 
   @override
-  StationState createState() => StationState();
+  RouteState createState() => RouteState();
 }
 
-class StationState extends State<Station> {
+class RouteState extends State<Route> {
 
   Future<http.Response> getStations(id) {
     return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
@@ -133,86 +93,76 @@ class StationState extends State<Station> {
   }
 }
 
-class StationList extends StatelessWidget {
 
-  Future<http.Response> getAllStations() {
-    return http.get("http://data.lpp.si/stations/getAllStations");
-  }
-
-  Future<http.Response> getRoutesOnStation(stationId) {
-    return http.get("http://data.lpp.si/stations/getRoutesOnStation?station_int_id=$stationId");
-  }
-
-  Future<http.Response> getArrivals(stationId) {
-    return http.get("194.33.12.24/timetables/getArrivalsOnStation?station_int_id=$stationId");
-  }
-
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: FutureBuilder(
-            future: getAllStations(),
-            builder: (BuildContext context, AsyncSnapshot snapshot) {
-              if (snapshot.hasData) {
-                List stationList = jsonDecode(snapshot.data.body)["data"];
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: stationList.length,
-                  itemBuilder: (BuildContext context, int index) => ListTile(
-                    leading: Text(stationList[index]["name"]),
-                    onTap: () {
-                      getRoutesOnStation(stationList[index]["int_id"]).then((data) {
-                        print(data.body);
-                      });
-                    },
-                  ),
-                );
-              } else {
-                  return CircularProgressIndicator();
-              }
-            }
-        ),
-      ),
-    );
-  }
-}
 
 class SplashPage extends StatefulWidget {
   SplashPageState createState() => SplashPageState();
 }
 
 class SplashPageState extends State<SplashPage> {
-  Map routeGroups;
+  Map routeGroups = Map();
 
   Future<http.Response> getRouteGroups() {
     return http.get("http://data.lpp.si/routes/getRouteGroups");
   }
 
-  Future<void> getRoutes(routeNumber) async {
-    await http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+  Future<http.Response> getRoutes(routeNumber) {
+    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
   }
 
-  Future<List<void>> getData() async {
+  Future<List> getData() async {
     http.Response data = await getRouteGroups();
     List routeGroupsList = jsonDecode(data.body)["data"];
-    routeGroupsList.forEach((e) => routeGroups[e["name"]] = null);
+    routeGroupsList.forEach((e) => routeGroups[e["name"]] = List());
     return Future.wait(
       routeGroupsList.map((e) => getRoutes(e["name"]))
     );
+  }
+
+  Map routeFilter(Map routes) {
+    // TODO: obvozi, unique n-routi
+    // TODO: ne removat po indexu
+    RegExp r1 = RegExp(r"^[A-Z]");
+    RegExp r2 = RegExp(r"^[A-Z]");
+    routes.removeWhere((key, value) => value.isEmpty);
+    for (String key in routes.keys) {
+      List removables = [];
+      for (int index = 0; index < routes[key].length; index++) {
+
+        if (routes[key][index][0].contains("obvoz")) {
+          print("nice");
+          removables.add(routes[key][index]);
+        }
+      }
+      for (var removable in removables) {
+        print(removable);
+        routes[key].remove(removable);
+      }
+    }
+    return routes;
   }
 
   @override
   void initState() {
     super.initState();
     getData().then((data) {
-      print(data.toString());
+      data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
+        jsonDecode(e.body)["data"].forEach((e) =>
+        routeGroups[e["group_name"]].add([e["route_name"], e["int_id"], e["route_parent_id"]])));
+      routeGroups = routeFilter(routeGroups);
+      SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
+      print(routes);
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (BuildContext context) => RouteList(routes: routes)
+      ));
     });
   }
 
+
   @override
   Widget build(BuildContext context) {
-    return null;
+    return Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }
