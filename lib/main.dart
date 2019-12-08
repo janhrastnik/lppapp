@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:collection/collection.dart' as collection;
+import 'package:built_value/iso_8601_date_time_serializer.dart';
+import 'package:built_value/serializer.dart';
 
 void main() => runApp(MyApp());
 String url = "https://www.lpp.si/";
@@ -43,7 +45,18 @@ class RouteListState extends State<RouteList> {
             List routeNames = widget.routes[routeGroup];
             return ExpansionTile(
               title: Text(routeGroup),
-              children: routeNames.map((route) => Text(route[0])).toList(),
+              children: routeNames.map((route) => ListTile(
+                title: Text(route[0]),
+                onTap: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (BuildContext context) => Route(
+                      routeId: route[1],
+                      oppositeRouteId: route[2],
+                    )
+                  ));
+                }
+              ),
+            ).toList(),
             );
           }
               
@@ -53,9 +66,10 @@ class RouteListState extends State<RouteList> {
 }
 
 class Route extends StatefulWidget {
-  Route({Key key, this.routeId}) : super(key: key);
+  Route({Key key, this.routeId, this.oppositeRouteId}) : super(key: key);
 
   int routeId;
+  int oppositeRouteId;
 
   @override
   RouteState createState() => RouteState();
@@ -63,37 +77,101 @@ class Route extends StatefulWidget {
 
 class RouteState extends State<Route> {
 
-  Future<http.Response> getStations(id) {
-    return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FutureBuilder(
-          future: getStations(widget.routeId),
-          builder: (BuildContext context, AsyncSnapshot snapshot) {
-            if (snapshot.hasData) {
-              List stationsList = jsonDecode(snapshot.data.body)["data"];
-              stationsList.sort((a, b) => a["order_no"].compareTo(b["order_no"]));
-              print(stationsList.toString());
-              return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: stationsList.length,
-                  itemBuilder: (BuildContext context, int index) => ListTile(
-                    title: Text(stationsList[index]["name"]),
-                  )
-              );
-            } else {
-              return Text("no data");
-            }
-          }
-      )
+      body: Column(
+        children: <Widget>[
+          Expanded(child: RouteDisplay(id: widget.routeId)),
+        ],
+      ),
     );
   }
 }
 
+class RouteDisplay extends StatelessWidget {
+  RouteDisplay({Key key, this.id}) : super(key: key);
+  int id;
 
+  Future<http.Response> getStations(id) {
+    return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
+  }
+
+  Future<http.Response> getRouteDetails(id) {
+    return http.get("http://data.lpp.si/routes/getRouteDetails?route_int_id=$id");
+  }
+
+  Future<http.Response> getArrivalsOnStation(id) {
+    return http.get("http://194.33.12.24/timetables/getArrivalsOnStation?station_int_id=$id");
+  }
+
+  void _showDialog(data, context) {
+    showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          var serializers =
+          (Serializers().toBuilder()..add(Iso8601DateTimeSerializer())).build();
+          print(data.toString());
+          return AlertDialog(
+            content: ListView.builder(
+                itemCount: data.length,
+                itemBuilder: (BuildContext context, int index) {
+                  DateTime date = serializers.deserialize(data[index]["arrival_time"], specifiedType: const FullType(DateTime));
+                  return ListTile(
+                    title: Text("${date.hour.toString()}:${date.minute.toString()}"),
+                  );
+                }
+            )
+          );
+        }
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: getStations(id),
+        builder: (BuildContext context, AsyncSnapshot snapshot) {
+          if (snapshot.hasData) {
+            List stationsList = jsonDecode(snapshot.data.body)["data"];
+            stationsList.sort((a, b) => a["order_no"].compareTo(b["order_no"]));
+            return Column(
+              children: <Widget>[
+                FutureBuilder(
+                  future: getRouteDetails(id),
+                  builder: (BuildContext context, AsyncSnapshot snapshot) {
+                    if (snapshot.hasData) {
+                      Map routeData = jsonDecode(snapshot.data.body)["data"];
+                      return Text(routeData["name"]);
+                    } else {
+                      return Center(child: CircularProgressIndicator());
+                    }
+                  },
+                ),
+                Expanded(
+                  child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: stationsList.length,
+                      itemBuilder: (BuildContext context, int index) => ListTile(
+                        title: Text(stationsList[index]["name"]),
+                        onTap: () {
+                          getArrivalsOnStation(stationsList[index]["int_id"]).then((data) {
+                            Map decoded = jsonDecode(data.body);
+                            _showDialog(decoded["data"], context);
+                          });
+                        },
+                      )
+                  ),
+                )
+              ],
+            );
+          } else {
+            return Center(child: CircularProgressIndicator());
+          }
+        }
+    );
+  }
+}
 
 class SplashPage extends StatefulWidget {
   SplashPageState createState() => SplashPageState();
@@ -127,17 +205,20 @@ class SplashPageState extends State<SplashPage> {
     routes.removeWhere((key, value) => value.isEmpty);
     for (String key in routes.keys) {
       List removables = [];
-      for (int index = 0; index < routes[key].length; index++) {
+      List opposites = [];
 
-        if (routes[key][index][0].contains("obvoz")) {
-          print("nice");
-          removables.add(routes[key][index]);
+      routes[key].forEach((e) {
+        try {
+          if (e[1] < e[2]) {
+            opposites.add(e[2]);
+          }
+        } catch (e) {}
+        if(e[3].contains("obvoz")) {
+          removables.add(e);
         }
-      }
-      for (var removable in removables) {
-        print(removable);
-        routes[key].remove(removable);
-      }
+      });
+
+      routes[key].removeWhere((e) => removables.contains(e) || opposites.contains(e[2]));
     }
     return routes;
   }
@@ -148,7 +229,7 @@ class SplashPageState extends State<SplashPage> {
     getData().then((data) {
       data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
         jsonDecode(e.body)["data"].forEach((e) =>
-        routeGroups[e["group_name"]].add([e["route_name"], e["int_id"], e["route_parent_id"]])));
+        routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
       routeGroups = routeFilter(routeGroups);
       SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
       print(routes);
