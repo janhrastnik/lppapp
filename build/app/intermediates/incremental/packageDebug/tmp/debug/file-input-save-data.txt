@@ -1,5 +1,5 @@
 #Internal package file, do not edit.
-#Mon Dec 09 20:47:21 CET 2019
+#Mon Dec 09 22:22:45 CET 2019
 4.path=flutter_assets/kernel_blob.bin
 8.set=ASSET
 6.path=flutter_assets/vm_snapshot_data

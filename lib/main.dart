@@ -3,48 +3,46 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:collection/collection.dart' as collection;
+import 'package:flutter/services.dart';
 
 void main() => runApp(MyApp());
-String url = "https://www.lpp.si/";
 
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    SystemChrome.setEnabledSystemUIOverlays([]);
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: SplashPage()
+      home: SplashPage(),
     );
   }
 }
 
-class RouteList extends StatefulWidget {
+class RouteList extends StatelessWidget {
   RouteList({Key key, this.routes}) : super(key: key);
 
   final Map routes;
-
-  @override
-  RouteListState createState() => RouteListState();
-}
-
-class RouteListState extends State<RouteList> {
-  
   
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text("Linije"),
+      ),
       body: ListView.builder(
-          itemCount: widget.routes.length,
+          itemCount: routes.length,
           itemBuilder: (BuildContext context, int index) {
-            String routeGroup = widget.routes.keys.toList()[index];
-            List routeNames = widget.routes[routeGroup];
+            String routeGroup = routes.keys.toList()[index];
+            List routeNames = routes[routeGroup];
             return ExpansionTile(
               title: Text(routeGroup),
               children: routeNames.map((route) => ListTile(
                 title: Text(route[0]),
+                subtitle: Text(route[3]),
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (BuildContext context) => Route(
@@ -63,25 +61,23 @@ class RouteListState extends State<RouteList> {
   }
 }
 
-class Route extends StatefulWidget {
+class Route extends StatelessWidget {
   Route({Key key, this.routeId, this.oppositeRouteId}) : super(key: key);
 
-  int routeId;
-  int oppositeRouteId;
-
-  @override
-  RouteState createState() => RouteState();
-}
-
-class RouteState extends State<Route> {
+  final int routeId;
+  final int oppositeRouteId;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text("Postaje"),
+      ),
       body: Row(
         children: <Widget>[
-          Expanded(child: RouteDisplay(id: widget.routeId)),
-          Expanded(child: RouteDisplay(id: widget.oppositeRouteId))
+          Expanded(child: RouteDisplay(id: routeId)),
+          VerticalDivider(color: Colors.black54,),
+          Expanded(child: RouteDisplay(id: oppositeRouteId))
         ],
       ),
     );
@@ -90,7 +86,7 @@ class RouteState extends State<Route> {
 
 class RouteDisplay extends StatelessWidget {
   RouteDisplay({Key key, this.id}) : super(key: key);
-  int id;
+  final int id;
 
   Future<http.Response> getStations(id) {
     return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
@@ -108,26 +104,32 @@ class RouteDisplay extends StatelessWidget {
     showDialog(
         context: context,
         builder: (BuildContext context) {
-          return AlertDialog(
-            content: ListView.builder(
-                itemCount: data.length,
-                itemBuilder: (BuildContext context, int index) {
-                  DateTime now = DateTime.now();
-                  print(now);
-                  DateTime date = DateTime.parse(data[index]["arrival_time"]).toLocal();
-                  print(now.isAfter(date));
-                  print(date);
-                  if (now.isBefore(date)) {
-                    return ListTile(
-                      title: Text("${date.hour.toString()}:${date.minute.toString()}"),
-                    );
-                  } else {
-                    print("no");
-                    return Container();
-                  }
-                }
-            )
-          );
+          if (data != null) {
+            return AlertDialog(
+              title: Text("Prihajajoči prihodi"),
+                content: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: data.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      DateTime now = DateTime.now();
+                      DateTime date = DateTime.parse(data[index]["arrival_time"]).toLocal();
+                      if (now.isBefore(date)) {
+                        return ListTile(
+                          title: Text("${date.hour.toString()}:${date.minute < 10 ? "0" + date.minute.toString() : date.minute.toString()}"),
+                        );
+                      } else {
+                        print("no");
+                        return Container();
+                      }
+                    }
+                )
+            );
+          } else {
+            return AlertDialog(
+              // TODO: show alternative lines
+              title: Text("Prihajajoči prihodi"),
+              content: Text("Brez prihajajočih prihodov danes."),);
+          }
         }
     );
   }
@@ -147,12 +149,17 @@ class RouteDisplay extends StatelessWidget {
                   builder: (BuildContext context, AsyncSnapshot snapshot) {
                     if (snapshot.hasData) {
                       Map routeData = jsonDecode(snapshot.data.body)["data"];
-                      return Text(routeData["name"]);
+                      return Container(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text(routeData["name"], style: TextStyle(fontSize: 20.0),),
+                        width: double.infinity,
+                      );
                     } else {
                       return Center(child: CircularProgressIndicator());
                     }
                   },
                 ),
+                Divider(color: Colors.black54,),
                 Expanded(
                   child: ListView.builder(
                       shrinkWrap: true,
@@ -160,6 +167,7 @@ class RouteDisplay extends StatelessWidget {
                       itemBuilder: (BuildContext context, int index) => ListTile(
                         title: Text(stationsList[index]["name"]),
                         onTap: () {
+                          // TODO: move to alert dialog
                           getArrivalsOnStation(stationsList[index]["int_id"], id).then((data) {
                             Map decoded = jsonDecode(data.body);
                             _showDialog(decoded["data"], context);
@@ -205,8 +213,6 @@ class SplashPageState extends State<SplashPage> {
   Map routeFilter(Map routes) {
     // TODO: obvozi, unique n-routi
     // TODO: ne removat po indexu
-    RegExp r1 = RegExp(r"^[A-Z]");
-    RegExp r2 = RegExp(r"^[A-Z]");
     routes.removeWhere((key, value) => value.isEmpty);
     for (String key in routes.keys) {
       List removables = [];
@@ -218,7 +224,7 @@ class SplashPageState extends State<SplashPage> {
             opposites.add(e[2]);
           }
         } catch (e) {}
-        if(e[3].contains("obvoz") || e[3].contains("garaža")) {
+        if(e[3].contains("obvoz") || e[3].contains("GARAŽA")) {
           removables.add(e);
         }
       });
@@ -237,8 +243,7 @@ class SplashPageState extends State<SplashPage> {
         routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
       routeGroups = routeFilter(routeGroups);
       SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
-      print(routes);
-      Navigator.of(context).push(MaterialPageRoute(
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (BuildContext context) => RouteList(routes: routes)
       ));
     });
@@ -248,7 +253,7 @@ class SplashPageState extends State<SplashPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(child: CircularProgressIndicator()),
+      body: Center(child: CircularProgressIndicator())
     );
   }
 }
