@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:collection/collection.dart' as collection;
-import 'package:built_value/iso_8601_date_time_serializer.dart';
-import 'package:built_value/serializer.dart';
 
 void main() => runApp(MyApp());
 String url = "https://www.lpp.si/";
@@ -80,9 +78,10 @@ class RouteState extends State<Route> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Row(
         children: <Widget>[
           Expanded(child: RouteDisplay(id: widget.routeId)),
+          Expanded(child: RouteDisplay(id: widget.oppositeRouteId))
         ],
       ),
     );
@@ -101,25 +100,31 @@ class RouteDisplay extends StatelessWidget {
     return http.get("http://data.lpp.si/routes/getRouteDetails?route_int_id=$id");
   }
 
-  Future<http.Response> getArrivalsOnStation(id) {
-    return http.get("http://194.33.12.24/timetables/getArrivalsOnStation?station_int_id=$id");
+  Future<http.Response> getArrivalsOnStation(stationId, routeId) {
+    return http.get("http://194.33.12.24/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
   }
 
   void _showDialog(data, context) {
     showDialog(
         context: context,
         builder: (BuildContext context) {
-          var serializers =
-          (Serializers().toBuilder()..add(Iso8601DateTimeSerializer())).build();
-          print(data.toString());
           return AlertDialog(
             content: ListView.builder(
                 itemCount: data.length,
                 itemBuilder: (BuildContext context, int index) {
-                  DateTime date = serializers.deserialize(data[index]["arrival_time"], specifiedType: const FullType(DateTime));
-                  return ListTile(
-                    title: Text("${date.hour.toString()}:${date.minute.toString()}"),
-                  );
+                  DateTime now = DateTime.now();
+                  print(now);
+                  DateTime date = DateTime.parse(data[index]["arrival_time"]).toLocal();
+                  print(now.isAfter(date));
+                  print(date);
+                  if (now.isBefore(date)) {
+                    return ListTile(
+                      title: Text("${date.hour.toString()}:${date.minute.toString()}"),
+                    );
+                  } else {
+                    print("no");
+                    return Container();
+                  }
                 }
             )
           );
@@ -155,7 +160,7 @@ class RouteDisplay extends StatelessWidget {
                       itemBuilder: (BuildContext context, int index) => ListTile(
                         title: Text(stationsList[index]["name"]),
                         onTap: () {
-                          getArrivalsOnStation(stationsList[index]["int_id"]).then((data) {
+                          getArrivalsOnStation(stationsList[index]["int_id"], id).then((data) {
                             Map decoded = jsonDecode(data.body);
                             _showDialog(decoded["data"], context);
                           });
@@ -213,7 +218,7 @@ class SplashPageState extends State<SplashPage> {
             opposites.add(e[2]);
           }
         } catch (e) {}
-        if(e[3].contains("obvoz")) {
+        if(e[3].contains("obvoz") || e[3].contains("garaža")) {
           removables.add(e);
         }
       });
