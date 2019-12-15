@@ -12,9 +12,10 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     SystemChrome.setEnabledSystemUIOverlays([]);
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'LPP Prihodi',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.green,
       ),
       home: SplashPage(),
     );
@@ -25,7 +26,14 @@ class RouteList extends StatelessWidget {
   RouteList({Key key, this.routes}) : super(key: key);
 
   final Map routes;
-  
+
+  String getNumber(String routeGroup, String routeName) {
+    //TODO: add regex for leading numbers
+    RegExp reg = RegExp(r"^[A-Z] ");
+    RegExpMatch matches = reg.firstMatch(routeName);
+    return matches != null ? routeGroup + matches.group(0) : routeGroup;
+
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,8 +49,17 @@ class RouteList extends StatelessWidget {
             return ExpansionTile(
               title: Text(routeGroup),
               children: routeNames.map((route) => ListTile(
-                title: Text(route[0]),
-                subtitle: Text(route[3]),
+                leading: Container(
+                  width: 30.0,
+                  height: 30.0,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(5.0),
+                    color: Colors.green,
+                  ),
+                  child: Center(child: Text(getNumber(routeGroup, route[0]), style: TextStyle(color: Colors.white), textAlign: TextAlign.center,)),
+                ),
+                title: Text(route[0]), // route title
+                subtitle: Text(route[3]), // subroute title
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (BuildContext context) => Route(
@@ -77,7 +94,7 @@ class Route extends StatelessWidget {
         children: <Widget>[
           Expanded(child: RouteDisplay(id: routeId)),
           VerticalDivider(color: Colors.black54,),
-          Expanded(child: RouteDisplay(id: oppositeRouteId))
+          oppositeRouteId != null ? Expanded(child: RouteDisplay(id: oppositeRouteId)) : Container()
         ],
       ),
     );
@@ -97,41 +114,69 @@ class RouteDisplay extends StatelessWidget {
   }
 
   Future<http.Response> getArrivalsOnStation(stationId, routeId) {
-    return http.get("http://194.33.12.24/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
+    return http.get("http://data.lpp.si/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
   }
 
-  void _showDialog(data, context) {
+  Future<http.Response> getLiveBusArrival(stationId) {
+    return http.get("http://data.lpp.si/timetables/liveBusArrival?station_int_id=$stationId");
+  }
+
+  void _showDialog(stationId, routeId, context) {
     showDialog(
         context: context,
         builder: (BuildContext context) {
-          if (data != null) {
-            return AlertDialog(
+          return AlertDialog(
               title: Text("Prihajajoči prihodi"),
-                content: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: data.length,
-                    itemBuilder: (BuildContext context, int index) {
-                      DateTime now = DateTime.now();
-                      DateTime date = DateTime.parse(data[index]["arrival_time"]).toLocal();
-                      if (now.isBefore(date)) {
-                        return ListTile(
-                          title: Text("${date.hour.toString()}:${date.minute < 10 ? "0" + date.minute.toString() : date.minute.toString()}"),
-                        );
-                      } else {
-                        print("no");
-                        return Container();
-                      }
+              content: FutureBuilder(
+                  future: Future.wait([
+                    getArrivalsOnStation(stationId, routeId),
+                    getLiveBusArrival(stationId)
+                  ]),
+                  builder: (BuildContext context, AsyncSnapshot snapshot) {
+                    if (snapshot.hasData) {
+                      // vozni red
+                      List data = jsonDecode(snapshot.data[0].body)["data"];
+                      List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
+                      return data != null ? ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: data.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            DateTime now = DateTime.now();
+                            DateTime delayed = now.subtract(Duration(minutes: 5));
+                            DateTime date = DateTime.parse(
+                                data[index]["arrival_time"]).toLocal().subtract(
+                                Duration(hours: 1));
+                            if (delayed.isBefore(date)) {
+                              String remainingTime;
+                              if (liveArrivals.isNotEmpty) {
+                                print(liveArrivals.first["eta"].toString());
+                                remainingTime = "čez ${liveArrivals.first["eta"]} min";
+                                date = DateTime.now().add(Duration(minutes: liveArrivals.first["eta"]));
+                                liveArrivals.removeAt(0);
+                              } else {
+                                Duration difference = date.difference(now);
+                                remainingTime = "čez ${difference.inHours != 0 ? difference.inHours.toString() + " ur" : ""} ${difference.inMinutes - difference.inHours * 60} min";
+                              }
+                              return ListTile(
+                                  leading: Text(
+                                      "${date.hour.toString()}:${date.minute <
+                                          10
+                                          ? "0" + date.minute.toString()
+                                          : date.minute.toString()}",
+                                      textAlign: TextAlign.center),
+                                  trailing: Text(remainingTime),
+                              );
+                            } else {
+                              return Container();
+                            }
+                          }
+                      ) : Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
+                    } else {
+                      return Center(child: CircularProgressIndicator(),);
                     }
-                )
-            );
-          } else {
-            return AlertDialog(
-              // TODO: show alternative lines
-              title: Text("Prihajajoči prihodi"),
-              content: Text("Brez prihajajočih prihodov danes."),);
-          }
-        }
-    );
+                  })
+          );
+        });
   }
 
   @override
@@ -167,11 +212,7 @@ class RouteDisplay extends StatelessWidget {
                       itemBuilder: (BuildContext context, int index) => ListTile(
                         title: Text(stationsList[index]["name"]),
                         onTap: () {
-                          // TODO: move to alert dialog
-                          getArrivalsOnStation(stationsList[index]["int_id"], id).then((data) {
-                            Map decoded = jsonDecode(data.body);
-                            _showDialog(decoded["data"], context);
-                          });
+                            _showDialog(stationsList[index]["int_id"], id, context);
                         },
                       )
                   ),
@@ -212,7 +253,6 @@ class SplashPageState extends State<SplashPage> {
 
   Map routeFilter(Map routes) {
     // TODO: obvozi, unique n-routi
-    // TODO: ne removat po indexu
     routes.removeWhere((key, value) => value.isEmpty);
     for (String key in routes.keys) {
       List removables = [];
@@ -243,6 +283,7 @@ class SplashPageState extends State<SplashPage> {
         routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
       routeGroups = routeFilter(routeGroups);
       SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
+      print(routes);
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (BuildContext context) => RouteList(routes: routes)
       ));
@@ -253,7 +294,14 @@ class SplashPageState extends State<SplashPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(child: CircularProgressIndicator())
+      backgroundColor: Color(0xFF28b463),
+      body: Center(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Image.asset("assets/bus.png"),
+          CircularProgressIndicator(backgroundColor: Colors.white)
+        ],
+      ))
     );
   }
 }

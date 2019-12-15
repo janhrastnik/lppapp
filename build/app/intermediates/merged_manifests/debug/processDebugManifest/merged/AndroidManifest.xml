@@ -23,7 +23,8 @@
         android:name="io.flutter.app.FlutterApplication"
         android:debuggable="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="testandroid" >
+        android:label="testandroid"
+        android:testOnly="true" >
         <activity
             android:name="janhrastnik.testandroid.MainActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
