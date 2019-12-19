@@ -137,22 +137,30 @@ class RouteDisplay extends StatelessWidget {
                       // vozni red
                       List data = jsonDecode(snapshot.data[0].body)["data"];
                       List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
+
+
+                      // TODO: get closest date
+                      if (liveArrivals.isNotEmpty) {
+                        for (var arrival in liveArrivals) {
+
+                        }
+                      }
                       return data != null ? ListView.builder(
                           shrinkWrap: true,
                           itemCount: data.length,
                           itemBuilder: (BuildContext context, int index) {
                             DateTime now = DateTime.now();
-                            DateTime delayed = now.subtract(Duration(minutes: 5));
                             DateTime date = DateTime.parse(
                                 data[index]["arrival_time"]).toLocal().subtract(
                                 Duration(hours: 1));
-                            if (delayed.isBefore(date)) {
+                            if (now.isBefore(date)) {
                               String remainingTime;
                               if (liveArrivals.isNotEmpty) {
                                 print(liveArrivals.first["eta"].toString());
                                 remainingTime = "čez ${liveArrivals.first["eta"]} min";
                                 date = DateTime.now().add(Duration(minutes: liveArrivals.first["eta"]));
                                 liveArrivals.removeAt(0);
+                                // TODO: find replacement date
                               } else {
                                 Duration difference = date.difference(now);
                                 remainingTime = "čez ${difference.inHours != 0 ? difference.inHours.toString() + " ur" : ""} ${difference.inMinutes - difference.inHours * 60} min";
@@ -242,13 +250,44 @@ class SplashPageState extends State<SplashPage> {
     return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
   }
 
-  Future<List> getData() async {
-    http.Response data = await getRouteGroups();
-    List routeGroupsList = jsonDecode(data.body)["data"];
-    routeGroupsList.forEach((e) => routeGroups[e["name"]] = List());
-    return Future.wait(
-      routeGroupsList.map((e) => getRoutes(e["name"]))
+  void _showErrDialog(context) {
+    showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Povezava ni bila najdena"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text("Aplikacija potrebuje internet za nalaganje podatkov. Vklopite "
+                  "povezavo in poskusite znova."),
+              MaterialButton(
+                  child: Text("Poskusi znova"),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (BuildContext context) => SplashPage()
+                    ));
+                  })
+            ],
+          ),
+        );
+      }
     );
+  }
+
+  Future<List> getData() async {
+    try {
+      http.Response data = await getRouteGroups();
+      List routeGroupsList = jsonDecode(data.body)["data"];
+      routeGroupsList.forEach((e) => routeGroups[e["name"]] = List());
+      return Future.wait(
+          routeGroupsList.map((e) => getRoutes(e["name"]))
+      );
+    } catch (_) {
+      print("err");
+    }
   }
 
   Map routeFilter(Map routes) {
@@ -278,15 +317,19 @@ class SplashPageState extends State<SplashPage> {
   void initState() {
     super.initState();
     getData().then((data) {
-      data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
-        jsonDecode(e.body)["data"].forEach((e) =>
-        routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
-      routeGroups = routeFilter(routeGroups);
-      SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
-      print(routes);
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (BuildContext context) => RouteList(routes: routes)
-      ));
+      if (data == null) {
+        _showErrDialog(context);
+      } else {
+        data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
+            jsonDecode(e.body)["data"].forEach((e) =>
+                routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
+        routeGroups = routeFilter(routeGroups);
+        SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
+        print(routes);
+        Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (BuildContext context) => RouteList(routes: routes)
+        ));
+      }
     });
   }
 
