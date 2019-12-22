@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:collection/collection.dart' as collection;
 import 'package:flutter/services.dart';
+import 'package:duration/duration.dart';
+import 'package:date_format/date_format.dart';
 
 void main() => runApp(MyApp());
 
@@ -135,48 +137,50 @@ class RouteDisplay extends StatelessWidget {
                   builder: (BuildContext context, AsyncSnapshot snapshot) {
                     if (snapshot.hasData) {
                       // vozni red
-                      List data = jsonDecode(snapshot.data[0].body)["data"];
+                      List timetable = jsonDecode(snapshot.data[0].body)["data"];
+
                       List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
 
-
-                      // TODO: get closest date
                       if (liveArrivals.isNotEmpty) {
                         for (var arrival in liveArrivals) {
-
+                          List<List> diffs = List();
+                          DateTime arrivalDate = DateTime.now().add(Duration(minutes: arrival["eta"]));
+                          for (var date in timetable) {
+                            DateTime estimatedDate = DateTime.parse(
+                                date["arrival_time"]).toLocal().subtract(Duration(hours: 1));
+                            List entry = [timetable.indexOf(date), arrivalDate.difference(estimatedDate)];
+                            diffs.add(entry);
+                          }
+                          diffs.sort((a, b) => a[1].abs().compareTo(b[1].abs()));
+                          // first value in diffs is the most probable timetable correlation
+                          List valueToChange = diffs.first;
+                          timetable[valueToChange[0]]["arrival_time"] = arrivalDate.toIso8601String();
+                          // if this is the first live arrival, remove all timetable entries up to the live arrival
+                          if (liveArrivals.indexOf(arrival) == 0) {
+                            timetable = timetable.sublist(valueToChange[0]);
+                          }
                         }
+                      } else {
+                        timetable.removeWhere((e) => DateTime.now().isAfter(
+                          DateTime.parse(e["arrival_time"]).toLocal()
+                        ));
                       }
-                      return data != null ? ListView.builder(
+                      return timetable != null && timetable != [] ? ListView.builder(
                           shrinkWrap: true,
-                          itemCount: data.length,
+                          itemCount: timetable.length,
                           itemBuilder: (BuildContext context, int index) {
-                            DateTime now = DateTime.now();
-                            DateTime date = DateTime.parse(
-                                data[index]["arrival_time"]).toLocal().subtract(
-                                Duration(hours: 1));
-                            if (now.isBefore(date)) {
-                              String remainingTime;
-                              if (liveArrivals.isNotEmpty) {
-                                print(liveArrivals.first["eta"].toString());
-                                remainingTime = "čez ${liveArrivals.first["eta"]} min";
-                                date = DateTime.now().add(Duration(minutes: liveArrivals.first["eta"]));
-                                liveArrivals.removeAt(0);
-                                // TODO: find replacement date
-                              } else {
-                                Duration difference = date.difference(now);
-                                remainingTime = "čez ${difference.inHours != 0 ? difference.inHours.toString() + " ur" : ""} ${difference.inMinutes - difference.inHours * 60} min";
-                              }
-                              return ListTile(
-                                  leading: Text(
-                                      "${date.hour.toString()}:${date.minute <
-                                          10
-                                          ? "0" + date.minute.toString()
-                                          : date.minute.toString()}",
-                                      textAlign: TextAlign.center),
-                                  trailing: Text(remainingTime),
-                              );
-                            } else {
-                              return Container();
+                            Duration dur;
+                            if (liveArrivals.isNotEmpty) {
+                              // TODO: set dur
                             }
+                            return Wrap(
+                              direction: Axis.vertical,
+                              children: <Widget>[
+                                Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
+                                    [HH, ':', nn])
+                                ),
+                                Text(dur.toString()),
+                            ]);
                           }
                       ) : Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
                     } else {
