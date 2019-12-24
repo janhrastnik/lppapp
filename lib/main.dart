@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:collection/collection.dart' as collection;
 import 'package:flutter/services.dart';
-import 'package:duration/duration.dart';
 import 'package:date_format/date_format.dart';
 
 void main() => runApp(MyApp());
@@ -136,18 +135,24 @@ class RouteDisplay extends StatelessWidget {
                   ]),
                   builder: (BuildContext context, AsyncSnapshot snapshot) {
                     if (snapshot.hasData) {
-                      // vozni red
                       List timetable = jsonDecode(snapshot.data[0].body)["data"];
 
                       List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
 
+                      // TODO: set time to local
+                      for (Map arrival in timetable) {
+                        DateTime estimatedDate = DateTime.parse(arrival["arrival_time"]);
+                        arrival["arrival_time"] = estimatedDate.toLocal()
+                            .subtract(Duration(hours: 1)).toIso8601String();
+                      }
+
                       if (liveArrivals.isNotEmpty) {
-                        for (var arrival in liveArrivals) {
+                        for (Map arrival in liveArrivals) {
                           List<List> diffs = List();
                           DateTime arrivalDate = DateTime.now().add(Duration(minutes: arrival["eta"]));
-                          for (var date in timetable) {
+                          for (Map date in timetable) {
                             DateTime estimatedDate = DateTime.parse(
-                                date["arrival_time"]).toLocal().subtract(Duration(hours: 1));
+                                date["arrival_time"]);
                             List entry = [timetable.indexOf(date), arrivalDate.difference(estimatedDate)];
                             diffs.add(entry);
                           }
@@ -170,17 +175,19 @@ class RouteDisplay extends StatelessWidget {
                           itemCount: timetable.length,
                           itemBuilder: (BuildContext context, int index) {
                             Duration dur;
-                            if (liveArrivals.isNotEmpty) {
-                              // TODO: set dur
-                            }
-                            return Wrap(
-                              direction: Axis.vertical,
-                              children: <Widget>[
-                                Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
-                                    [HH, ':', nn])
-                                ),
-                                Text(dur.toString()),
-                            ]);
+
+                            // set dur, increase dur by 1 to accomodate for seconds difference
+                            dur = DateTime.parse(timetable[index]["arrival_time"])
+                                .add(Duration(minutes: 1))
+                                .difference(DateTime.now());
+                            print(dur);
+
+                            return ListTile(
+                              leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
+                                  [HH, ':', nn])
+                              ),
+                              trailing: Text("čez ${dur.inHours} h in ${dur.inMinutes - dur.inHours * 60} min"),
+                            );
                           }
                       ) : Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
                     } else {
