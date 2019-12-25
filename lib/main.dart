@@ -23,32 +23,178 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class SplashPage extends StatefulWidget {
+  SplashPageState createState() => SplashPageState();
+}
+
+class SplashPageState extends State<SplashPage> {
+  Map<String, List> routeGroups = Map();
+
+  Future<http.Response> getRouteGroups() {
+    return http.get("http://data.lpp.si/routes/getRouteGroups");
+  }
+
+  Future<http.Response> getRoutes(routeNumber) {
+    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+  }
+
+  // if the app has no internet connection
+  void _showErrDialog(context) {
+    showDialog(
+        barrierDismissible: false,
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Povezava ni bila najdena"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text("Aplikacija potrebuje internet za nalaganje podatkov. Vklopite "
+                    "povezavo in poskusite znova."),
+                MaterialButton(
+                    child: Text("Poskusi znova"),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (BuildContext context) => SplashPage()
+                      ));
+                    })
+              ],
+            ),
+          );
+        }
+    );
+  }
+
+  Future<List> getData() async {
+    try {
+      http.Response data = await getRouteGroups();
+      List routeGroupsList = jsonDecode(data.body)["data"];
+      routeGroupsList.forEach((e) => routeGroups[e["name"]] = List());
+      return Future.wait(
+          routeGroupsList.map((e) => getRoutes(e["name"]))
+      );
+    } catch (_) {
+      print("err");
+    }
+  }
+
+  // filters out bad routes
+  Map routeFilter(Map<String, List> routes) {
+    // TODO: obvozi, unique n-routi
+    routes.removeWhere((key, value) => value.isEmpty);
+
+    for (String key in routes.keys) {
+      List removables = [];
+
+      routes[key].forEach((route) {
+        try {
+          if (route[1] < route[2]) {
+            removables.add(route);
+          }
+        } catch(_) {
+          removables.add(route);
+        }
+        if(route[3].contains("obvoz") || route[3].contains("GARAŽA")) {
+          removables.add(route);
+        }
+      });
+
+      routes[key].removeWhere((e) => removables.contains(e));
+    }
+
+    // find identical routes, TODO: use this to find same route names
+    Map<String, List> routeMap = Map();
+    routes.forEach((routeGroupNumber, routeGroup) {
+      routeGroup.forEach((route) {
+        String routeNumber = getNumber(routeGroupNumber, route[0]);
+        if (routeMap.keys.contains(routeNumber)) {
+          routeMap[routeNumber].add(route[1]);
+        } else {
+          routeMap[routeNumber] = [route[1]];
+        }
+      });
+    });
+
+    // remove identical routes by descending id
+    List removableRoutes = [];
+    routeMap.forEach((routeNumber, routeIds) {
+      if (routeIds.length > 1) {
+        for (int routeId in routeIds.reversed.toList().sublist(1)) {
+          routes.forEach((routeGroupNumber, routeGroup) {
+            routeGroup.forEach((route) {
+              if (route[1] == routeId) {
+                removableRoutes.add(route);
+              }
+            });
+          });
+        }
+      }
+    });
+    /*
+    routes.forEach((k, v) {
+      v.removeWhere((e) => removableRoutes.contains(e));
+    });
+    */
+    print(routes);
+
+    return routes;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getData().then((data) {
+      if (data == null) {
+        _showErrDialog(context);
+      } else {
+        data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
+            jsonDecode(e.body)["data"].forEach((e) =>
+                routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
+        routeGroups = routeFilter(routeGroups);
+        SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
+        Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (BuildContext context) => RouteList(routes: routes)
+        ));
+      }
+    });
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        backgroundColor: Colors.green,
+        body: Center(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Image.asset("assets/bus.png"),
+            CircularProgressIndicator(backgroundColor: Colors.white)
+          ],
+        ))
+    );
+  }
+}
+
 class RouteList extends StatelessWidget {
   RouteList({Key key, this.routes}) : super(key: key);
 
   final Map routes;
-
-  String getNumber(String routeGroup, String routeName) {
-    //TODO: add regex for leading numbers
-    RegExp reg = RegExp(r"^[A-Z] ");
-    RegExpMatch matches = reg.firstMatch(routeName);
-    return matches != null ? routeGroup + matches.group(0) : routeGroup;
-
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text("Linije"),
+        leading: Container(), // to prevent previous route navigation
       ),
       body: ListView.builder(
           itemCount: routes.length,
           itemBuilder: (BuildContext context, int index) {
-            String routeGroup = routes.keys.toList()[index];
-            List routeNames = routes[routeGroup];
+            String routeGroupNumber = routes.keys.toList()[index];
+            List routeNames = routes[routeGroupNumber];
             return ExpansionTile(
-              title: Text(routeGroup),
+              title: Text(routeGroupNumber),
               children: routeNames.map((route) => ListTile(
                 leading: Container(
                   width: 30.0,
@@ -57,10 +203,10 @@ class RouteList extends StatelessWidget {
                     borderRadius: BorderRadius.circular(5.0),
                     color: Colors.green,
                   ),
-                  child: Center(child: Text(getNumber(routeGroup, route[0]), style: TextStyle(color: Colors.white), textAlign: TextAlign.center,)),
+                  child: Center(child: Text(getNumber(routeGroupNumber, route[0]), style: TextStyle(color: Colors.white), textAlign: TextAlign.center,)),
                 ),
                 title: Text(route[0]), // route title
-                subtitle: Text(route[3]), // subroute title
+                subtitle: Text(route.toString()), // subroute title
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (BuildContext context) => Route(
@@ -134,64 +280,68 @@ class RouteDisplay extends StatelessWidget {
                     getLiveBusArrival(stationId)
                   ]),
                   builder: (BuildContext context, AsyncSnapshot snapshot) {
-                    if (snapshot.hasData) {
-                      List timetable = jsonDecode(snapshot.data[0].body)["data"];
+                    try {
+                      if (snapshot.hasData) {
+                        List timetable = jsonDecode(snapshot.data[0].body)["data"];
 
-                      List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
+                        List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
 
-                      // TODO: set time to local
-                      for (Map arrival in timetable) {
-                        DateTime estimatedDate = DateTime.parse(arrival["arrival_time"]);
-                        arrival["arrival_time"] = estimatedDate.toLocal()
-                            .subtract(Duration(hours: 1)).toIso8601String();
-                      }
-
-                      if (liveArrivals.isNotEmpty) {
-                        for (Map arrival in liveArrivals) {
-                          List<List> diffs = List();
-                          DateTime arrivalDate = DateTime.now().add(Duration(minutes: arrival["eta"]));
-                          for (Map date in timetable) {
-                            DateTime estimatedDate = DateTime.parse(
-                                date["arrival_time"]);
-                            List entry = [timetable.indexOf(date), arrivalDate.difference(estimatedDate)];
-                            diffs.add(entry);
-                          }
-                          diffs.sort((a, b) => a[1].abs().compareTo(b[1].abs()));
-                          // first value in diffs is the most probable timetable correlation
-                          List valueToChange = diffs.first;
-                          timetable[valueToChange[0]]["arrival_time"] = arrivalDate.toIso8601String();
-                          // if this is the first live arrival, remove all timetable entries up to the live arrival
-                          if (liveArrivals.indexOf(arrival) == 0) {
-                            timetable = timetable.sublist(valueToChange[0]);
-                          }
+                        // TODO: set time to local
+                        for (Map arrival in timetable) {
+                          DateTime estimatedDate = DateTime.parse(arrival["arrival_time"]);
+                          arrival["arrival_time"] = estimatedDate.toLocal()
+                              .subtract(Duration(hours: 1)).toIso8601String();
                         }
-                      } else {
-                        timetable.removeWhere((e) => DateTime.now().isAfter(
-                          DateTime.parse(e["arrival_time"]).toLocal()
-                        ));
-                      }
-                      return timetable != null && timetable != [] ? ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: timetable.length,
-                          itemBuilder: (BuildContext context, int index) {
-                            Duration dur;
 
-                            // set dur, increase dur by 1 to accomodate for seconds difference
-                            dur = DateTime.parse(timetable[index]["arrival_time"])
-                                .add(Duration(minutes: 1))
-                                .difference(DateTime.now());
-                            print(dur);
-
-                            return ListTile(
-                              leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
-                                  [HH, ':', nn])
-                              ),
-                              trailing: Text("čez ${dur.inHours} h in ${dur.inMinutes - dur.inHours * 60} min"),
-                            );
+                        if (liveArrivals.isNotEmpty) {
+                          for (Map arrival in liveArrivals) {
+                            List<List> diffs = List();
+                            DateTime arrivalDate = DateTime.now().add(Duration(minutes: arrival["eta"]));
+                            for (Map date in timetable) {
+                              DateTime estimatedDate = DateTime.parse(
+                                  date["arrival_time"]);
+                              List entry = [timetable.indexOf(date), arrivalDate.difference(estimatedDate)];
+                              diffs.add(entry);
+                            }
+                            diffs.sort((a, b) => a[1].abs().compareTo(b[1].abs()));
+                            // first value in diffs is the most probable timetable correlation
+                            List valueToChange = diffs.first;
+                            timetable[valueToChange[0]]["arrival_time"] = arrivalDate.toIso8601String();
+                            // if this is the first live arrival, remove all timetable entries up to the live arrival
+                            if (liveArrivals.indexOf(arrival) == 0) {
+                              timetable = timetable.sublist(valueToChange[0]);
+                            }
                           }
-                      ) : Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
+                        } else {
+                          timetable.removeWhere((e) => DateTime.now().isAfter(
+                              DateTime.parse(e["arrival_time"]).toLocal()
+                          ));
+                        }
+                        return ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: timetable.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              Duration dur;
+
+                              // set dur, increase dur by 1 to accommodate for seconds difference
+                              dur = DateTime.parse(timetable[index]["arrival_time"])
+                                  .add(Duration(minutes: 1))
+                                  .difference(DateTime.now());
+
+                              return ListTile(
+                                leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
+                                    [HH, ':', nn])
+                                ),
+                                trailing: Text("čez ${dur.inHours > 1 ? dur.inHours.toString() + " h in " : ""}"
+                                    "${dur.inMinutes - dur.inHours * 60} min"),
+                              );
+                            }
+                        );
                     } else {
-                      return Center(child: CircularProgressIndicator(),);
+                      return Center(child: CircularProgressIndicator());
+                      }
+                    } catch(_) {
+                      return Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
                     }
                   })
           );
@@ -246,116 +396,9 @@ class RouteDisplay extends StatelessWidget {
   }
 }
 
-class SplashPage extends StatefulWidget {
-  SplashPageState createState() => SplashPageState();
-}
+String getNumber(String routeGroupNumber, String routeName) {
+  RegExp reg = RegExp(r"^[A-Z] ");
+  RegExpMatch matches = reg.firstMatch(routeName);
+  return matches != null ? routeGroupNumber + matches.group(0) : routeGroupNumber;
 
-class SplashPageState extends State<SplashPage> {
-  Map routeGroups = Map();
-
-  Future<http.Response> getRouteGroups() {
-    return http.get("http://data.lpp.si/routes/getRouteGroups");
-  }
-
-  Future<http.Response> getRoutes(routeNumber) {
-    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
-  }
-
-  void _showErrDialog(context) {
-    showDialog(
-      barrierDismissible: false,
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Povezava ni bila najdena"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text("Aplikacija potrebuje internet za nalaganje podatkov. Vklopite "
-                  "povezavo in poskusite znova."),
-              MaterialButton(
-                  child: Text("Poskusi znova"),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (BuildContext context) => SplashPage()
-                    ));
-                  })
-            ],
-          ),
-        );
-      }
-    );
-  }
-
-  Future<List> getData() async {
-    try {
-      http.Response data = await getRouteGroups();
-      List routeGroupsList = jsonDecode(data.body)["data"];
-      routeGroupsList.forEach((e) => routeGroups[e["name"]] = List());
-      return Future.wait(
-          routeGroupsList.map((e) => getRoutes(e["name"]))
-      );
-    } catch (_) {
-      print("err");
-    }
-  }
-
-  Map routeFilter(Map routes) {
-    // TODO: obvozi, unique n-routi
-    routes.removeWhere((key, value) => value.isEmpty);
-    for (String key in routes.keys) {
-      List removables = [];
-      List opposites = [];
-
-      routes[key].forEach((e) {
-        try {
-          if (e[1] < e[2]) {
-            opposites.add(e[2]);
-          }
-        } catch (e) {}
-        if(e[3].contains("obvoz") || e[3].contains("GARAŽA")) {
-          removables.add(e);
-        }
-      });
-
-      routes[key].removeWhere((e) => removables.contains(e) || opposites.contains(e[2]));
-    }
-    return routes;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    getData().then((data) {
-      if (data == null) {
-        _showErrDialog(context);
-      } else {
-        data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
-            jsonDecode(e.body)["data"].forEach((e) =>
-                routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
-        routeGroups = routeFilter(routeGroups);
-        SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
-        print(routes);
-        Navigator.of(context).pushReplacement(MaterialPageRoute(
-            builder: (BuildContext context) => RouteList(routes: routes)
-        ));
-      }
-    });
-  }
-
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(0xFF28b463),
-      body: Center(child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Image.asset("assets/bus.png"),
-          CircularProgressIndicator(backgroundColor: Colors.white)
-        ],
-      ))
-    );
-  }
 }
