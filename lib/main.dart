@@ -55,7 +55,7 @@ class SplashPageState extends State<SplashPage> {
                     child: Text("Poskusi znova"),
                     onPressed: () {
                       Navigator.pop(context);
-                      Navigator.of(context).push(MaterialPageRoute(
+                      Navigator.of(context).pushReplacement(MaterialPageRoute(
                           builder: (BuildContext context) => SplashPage()
                       ));
                     })
@@ -103,24 +103,22 @@ class SplashPageState extends State<SplashPage> {
       routes[key].removeWhere((e) => removables.contains(e));
     }
 
-    // find identical routes, TODO: use this to find same route names
+    // find identical routes, TODO: join this with upper code
     Map<String, List> routeMap = Map();
     routes.forEach((routeGroupNumber, routeGroup) {
       routeGroup.forEach((route) {
-        String routeNumber = getNumber(routeGroupNumber, route[0]);
-        if (routeMap.keys.contains(routeNumber)) {
-          routeMap[routeNumber].add(route[1]);
+        if (routeMap.keys.contains(route[0])) {
+          routeMap[route[0]].add(route[1]);
         } else {
-          routeMap[routeNumber] = [route[1]];
+          routeMap[route[0]] = [route[1]];
         }
       });
     });
-
     // remove identical routes by descending id
     List removableRoutes = [];
-    routeMap.forEach((routeNumber, routeIds) {
+    routeMap.forEach((routeName, routeIds) {
       if (routeIds.length > 1) {
-        for (int routeId in routeIds.reversed.toList().sublist(1)) {
+        for (int routeId in routeIds.toList().sublist(1)) {
           routes.forEach((routeGroupNumber, routeGroup) {
             routeGroup.forEach((route) {
               if (route[1] == routeId) {
@@ -131,12 +129,9 @@ class SplashPageState extends State<SplashPage> {
         }
       }
     });
-    /*
     routes.forEach((k, v) {
       v.removeWhere((e) => removableRoutes.contains(e));
     });
-    */
-    print(routes);
 
     return routes;
   }
@@ -150,6 +145,7 @@ class SplashPageState extends State<SplashPage> {
       } else {
         data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
             jsonDecode(e.body)["data"].forEach((e) =>
+                // TODO: change this into a map
                 routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
         routeGroups = routeFilter(routeGroups);
         SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
@@ -186,7 +182,6 @@ class RouteList extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text("Linije"),
-        leading: Container(), // to prevent previous route navigation
       ),
       body: ListView.builder(
           itemCount: routes.length,
