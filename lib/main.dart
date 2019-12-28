@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:date_format/date_format.dart';
 
 void main() => runApp(MyApp());
+List stationsList;
 
 class MyApp extends StatelessWidget {
   @override
@@ -36,6 +37,10 @@ class SplashPageState extends State<SplashPage> {
 
   Future<http.Response> getRoutes(routeNumber) {
     return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+  }
+
+  Future<http.Response> getAllStations() {
+    return http.get("http://data.lpp.si/stations/getAllStations");
   }
 
   // if the app has no internet connection
@@ -139,6 +144,9 @@ class SplashPageState extends State<SplashPage> {
   @override
   void initState() {
     super.initState();
+    getAllStations().then((stations) {
+      stationsList = jsonDecode(stations.body)["data"];
+    });
     getData().then((data) {
       if (data == null) {
         _showErrDialog(context);
@@ -201,7 +209,6 @@ class RouteList extends StatelessWidget {
                   child: Center(child: Text(getNumber(routeGroupNumber, route[0]), style: TextStyle(color: Colors.white), textAlign: TextAlign.center,)),
                 ),
                 title: Text(route[0]), // route title
-                subtitle: Text(route.toString()), // subroute title
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (BuildContext context) => Route(
@@ -232,13 +239,36 @@ class Route extends StatelessWidget {
       appBar: AppBar(
         title: Text("Postaje"),
       ),
-      body: Row(
+      body: Stack(
+        alignment: AlignmentDirectional.center,
         children: <Widget>[
-          Expanded(child: RouteDisplay(id: routeId)),
-          VerticalDivider(color: Colors.black54,),
-          oppositeRouteId != null ? Expanded(child: RouteDisplay(id: oppositeRouteId)) : Container()
+          Column(
+            children: <Widget>[
+              Container(
+                child: Row(
+                  children: <Widget>[
+                    Flexible(child: RouteTitle(id: routeId)),
+                    Flexible(child: RouteTitle(id: oppositeRouteId))
+                  ],
+                ),
+                decoration: BoxDecoration(
+                  boxShadow: [
+                    BoxShadow(blurRadius: 10.0, spreadRadius: 1.0, offset: Offset(0.0, 2.0), color: Colors.black38)
+                  ]
+                ),
+              ),
+              Expanded(
+                  child: Row(
+                    children: <Widget>[
+                      Flexible(child: RouteDisplay(id: routeId)),
+                      Flexible(child: RouteDisplay(id: oppositeRouteId))
+                    ],
+                  )
+              )],
+          ),
+          VerticalDivider(thickness: 1.0, color: Colors.black38,)
         ],
-      ),
+      )
     );
   }
 }
@@ -249,10 +279,6 @@ class RouteDisplay extends StatelessWidget {
 
   Future<http.Response> getStations(id) {
     return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
-  }
-
-  Future<http.Response> getRouteDetails(id) {
-    return http.get("http://data.lpp.si/routes/getRouteDetails?route_int_id=$id");
   }
 
   Future<http.Response> getArrivalsOnStation(stationId, routeId) {
@@ -278,7 +304,6 @@ class RouteDisplay extends StatelessWidget {
                     try {
                       if (snapshot.hasData) {
                         List timetable = jsonDecode(snapshot.data[0].body)["data"];
-
                         List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
 
                         // TODO: set time to local
@@ -327,7 +352,7 @@ class RouteDisplay extends StatelessWidget {
                                 leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
                                     [HH, ':', nn])
                                 ),
-                                trailing: Text("čez ${dur.inHours > 1 ? dur.inHours.toString() + " h in " : ""}"
+                                trailing: Text("čez ${dur.inHours > 0 ? dur.inHours.toString() + " h in " : ""}"
                                     "${dur.inMinutes - dur.inHours * 60} min"),
                               );
                             }
@@ -353,22 +378,6 @@ class RouteDisplay extends StatelessWidget {
             stationsList.sort((a, b) => a["order_no"].compareTo(b["order_no"]));
             return Column(
               children: <Widget>[
-                FutureBuilder(
-                  future: getRouteDetails(id),
-                  builder: (BuildContext context, AsyncSnapshot snapshot) {
-                    if (snapshot.hasData) {
-                      Map routeData = jsonDecode(snapshot.data.body)["data"];
-                      return Container(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text(routeData["name"], style: TextStyle(fontSize: 20.0),),
-                        width: double.infinity,
-                      );
-                    } else {
-                      return Center(child: CircularProgressIndicator());
-                    }
-                  },
-                ),
-                Divider(color: Colors.black54,),
                 Expanded(
                   child: ListView.builder(
                       shrinkWrap: true,
@@ -387,6 +396,34 @@ class RouteDisplay extends StatelessWidget {
             return Center(child: CircularProgressIndicator());
           }
         }
+    );
+  }
+}
+
+class RouteTitle extends StatelessWidget {
+  RouteTitle({Key key, this.id}) : super(key: key);
+  final int id;
+
+  Future<http.Response> getRouteDetails(id) {
+    return http.get("http://data.lpp.si/routes/getRouteDetails?route_int_id=$id");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: getRouteDetails(id),
+      builder: (BuildContext context, AsyncSnapshot snapshot) {
+        if (snapshot.hasData) {
+          Map routeData = jsonDecode(snapshot.data.body)["data"];
+          return Container(
+            padding: EdgeInsets.all(8.0),
+            child: Text(routeData["name"], style: TextStyle(fontSize: 20.0, color: Colors.white),),
+            color: Colors.green[400],
+          );
+        } else {
+          return Center(child: CircularProgressIndicator());
+        }
+      },
     );
   }
 }

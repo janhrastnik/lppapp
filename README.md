@@ -23,5 +23,9 @@ api calls.
 Clone the project, then import it in Android Studio/preferred IDE then run. Should work both on Android and iOS 
 without issues.
 
-# Contribution
+## Contribution
 Any feedback / contributors would be very welcome. 
+
+
+## Links
+You can download the app [here](https://play.google.com/store/apps/details?id=janhrastnik.lpp).
