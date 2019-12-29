@@ -135,9 +135,9 @@ class SplashPageState extends State<SplashPage> {
       }
     });
     routes.forEach((k, v) {
-      v.removeWhere((e) => removableRoutes.contains(e));
+      v.removeWhere((e) => removableRoutes.contains(e)); // removes identical routes
     });
-
+    routes.removeWhere((k, v) => routes[k].isEmpty);
     return routes;
   }
 
@@ -247,14 +247,15 @@ class Route extends StatelessWidget {
               Container(
                 child: Row(
                   children: <Widget>[
-                    Flexible(child: RouteTitle(id: routeId)),
-                    Flexible(child: RouteTitle(id: oppositeRouteId))
+                    Expanded(child: RouteTitle(id: routeId)),
+                    Expanded(child: RouteTitle(id: oppositeRouteId))
                   ],
                 ),
                 decoration: BoxDecoration(
                   boxShadow: [
                     BoxShadow(blurRadius: 10.0, spreadRadius: 1.0, offset: Offset(0.0, 2.0), color: Colors.black38)
-                  ]
+                  ],
+                  color: Colors.green[400]
                 ),
               ),
               Expanded(
