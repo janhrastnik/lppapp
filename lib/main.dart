@@ -145,6 +145,7 @@ class SplashPageState extends State<SplashPage> {
   void initState() {
     super.initState();
     getAllStations().then((stations) {
+      var stationsData = stations;
       stationsList = jsonDecode(stations.body)["data"];
     });
     getData().then((data) {
@@ -190,6 +191,16 @@ class RouteList extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text("Linije"),
+        actions: <Widget>[
+          IconButton(
+            icon: Icon(Icons.search),
+            onPressed: () {
+              showSearch(
+                  context: context,
+                  delegate: StationSearch(stationsList));
+            },
+          )
+        ],
       ),
       body: ListView.builder(
           itemCount: routes.length,
@@ -214,6 +225,7 @@ class RouteList extends StatelessWidget {
                     builder: (BuildContext context) => Route(
                       routeId: route[1],
                       oppositeRouteId: route[2],
+                      routeGroupNumber: routeGroupNumber,
                     )
                   ));
                 }
@@ -228,10 +240,11 @@ class RouteList extends StatelessWidget {
 }
 
 class Route extends StatelessWidget {
-  Route({Key key, this.routeId, this.oppositeRouteId}) : super(key: key);
+  Route({Key key, this.routeId, this.oppositeRouteId, this.routeGroupNumber}) : super(key: key);
 
   final int routeId;
   final int oppositeRouteId;
+  final String routeGroupNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -261,8 +274,8 @@ class Route extends StatelessWidget {
               Expanded(
                   child: Row(
                     children: <Widget>[
-                      Flexible(child: RouteDisplay(id: routeId)),
-                      Flexible(child: RouteDisplay(id: oppositeRouteId))
+                      Flexible(child: RouteDisplay(id: routeId, routeGroupNumber: routeGroupNumber)),
+                      Flexible(child: RouteDisplay(id: oppositeRouteId, routeGroupNumber: routeGroupNumber))
                     ],
                   )
               )],
@@ -275,8 +288,9 @@ class Route extends StatelessWidget {
 }
 
 class RouteDisplay extends StatelessWidget {
-  RouteDisplay({Key key, this.id}) : super(key: key);
+  RouteDisplay({Key key, this.id, this.routeGroupNumber}) : super(key: key);
   final int id;
+  final String routeGroupNumber;
 
   Future<http.Response> getStations(id) {
     return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
@@ -305,7 +319,9 @@ class RouteDisplay extends StatelessWidget {
                     try {
                       if (snapshot.hasData) {
                         List timetable = jsonDecode(snapshot.data[0].body)["data"];
+                        //TODO: REMOVE OTHER ROUTES FROM LIVEARRIVALS!!!!
                         List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
+                        liveArrivals.removeWhere((e) => e["route_number"].toString() != routeGroupNumber);
 
                         // TODO: set time to local
                         for (Map arrival in timetable) {
@@ -313,7 +329,6 @@ class RouteDisplay extends StatelessWidget {
                           arrival["arrival_time"] = estimatedDate.toLocal()
                               .subtract(Duration(hours: 1)).toIso8601String();
                         }
-
                         if (liveArrivals.isNotEmpty) {
                           for (Map arrival in liveArrivals) {
                             List<List> diffs = List();
@@ -338,30 +353,34 @@ class RouteDisplay extends StatelessWidget {
                               DateTime.parse(e["arrival_time"]).toLocal()
                           ));
                         }
-                        return ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: timetable.length,
-                            itemBuilder: (BuildContext context, int index) {
-                              Duration dur;
+                        return Container(
+                          width: double.maxFinite,
+                          child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: timetable.length,
+                              itemBuilder: (BuildContext context, int index) {
+                                Duration dur;
 
-                              // set dur, increase dur by 1 to accommodate for seconds difference
-                              dur = DateTime.parse(timetable[index]["arrival_time"])
-                                  .add(Duration(minutes: 1))
-                                  .difference(DateTime.now());
+                                // set dur, increase dur by 1 to accommodate for seconds difference
+                                dur = DateTime.parse(timetable[index]["arrival_time"])
+                                    .add(Duration(minutes: 1))
+                                    .difference(DateTime.now());
 
-                              return ListTile(
-                                leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
-                                    [HH, ':', nn])
-                                ),
-                                trailing: Text("čez ${dur.inHours > 0 ? dur.inHours.toString() + " h in " : ""}"
-                                    "${dur.inMinutes - dur.inHours * 60} min"),
-                              );
-                            }
+                                return ListTile(
+                                  leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
+                                      [HH, ':', nn]), overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Text("čez ${dur.inHours > 0 ? dur.inHours.toString() + " h in " : ""}"
+                                      "${dur.inMinutes - dur.inHours * 60} min", overflow: TextOverflow.ellipsis,),
+                                );
+                              }
+                          ),
                         );
                     } else {
                       return Center(child: CircularProgressIndicator());
                       }
-                    } catch(_) {
+                    } catch(err) {
+                      print(err);
                       return Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
                     }
                   })
@@ -433,5 +452,60 @@ String getNumber(String routeGroupNumber, String routeName) {
   RegExp reg = RegExp(r"^[A-Z] ");
   RegExpMatch matches = reg.firstMatch(routeName);
   return matches != null ? routeGroupNumber + matches.group(0) : routeGroupNumber;
+}
 
+class StationSearch extends SearchDelegate {
+  StationSearch(this.stations);
+  final List stations;
+
+  Future<http.Response> getStationById() {
+    return http.get("data.lpp.si/stations/getStationById");
+}
+
+  @override
+  String get searchFieldLabel => "Napišite ime postaje";
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: Icon(Icons.clear),
+        onPressed: () {
+          query = "";
+        },
+      )
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: Icon(Icons.arrow_back),
+      onPressed: () {
+        close(context, null);
+      },
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    final results = stations.where((station) => station["name"].toLowerCase()
+        == query.toLowerCase());
+    return ListView(
+      children: results.map((station) => ListTile(
+        title: Text(station.toString()),
+      )).toList(),
+    );
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final results = stations.where((station) => station["name"].toLowerCase().contains(
+        query.toLowerCase()));
+    return ListView(
+      children: results.map((station) => ListTile(
+        title: Text(station.toString()),
+      )).toList(),
+    );
+  }
 }
