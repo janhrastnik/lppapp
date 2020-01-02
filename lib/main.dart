@@ -5,9 +5,10 @@ import 'dart:convert';
 import 'package:collection/collection.dart' as collection;
 import 'package:flutter/services.dart';
 import 'package:date_format/date_format.dart';
+import 'dart:math';
 
 void main() => runApp(MyApp());
-List stationsList;
+List stationList;
 
 class MyApp extends StatelessWidget {
   @override
@@ -145,8 +146,26 @@ class SplashPageState extends State<SplashPage> {
   void initState() {
     super.initState();
     getAllStations().then((stations) {
-      var stationsData = stations;
-      stationsList = jsonDecode(stations.body)["data"];
+      // once the stations get fetched, the duplicate station names need to be assigned a direction
+      Map<String, List<int>> stationMap = Map();
+      stationList = jsonDecode(stations.body)["data"];
+      for (Map station in stationList) {
+        if (stationMap.containsKey(station["name"])) {
+          stationMap[station["name"]].add(int.parse(station["ref_id"]));
+        } else {
+          stationMap[station["name"]] = [int.parse(station["ref_id"])];
+        }
+      }
+      stationMap.removeWhere((stationName, stationIds) => stationIds.length < 2);
+
+      stationMap.forEach((stationName, stationIds) {
+        int stationId = stationIds.reduce(min);
+        Map stationToChange = (stationList.where((station) => station["ref_id"] == stationId.toString())).first;
+        print(stationToChange);
+      }
+      );
+
+      print(stationMap);
     });
     getData().then((data) {
       if (data == null) {
@@ -197,7 +216,7 @@ class RouteList extends StatelessWidget {
             onPressed: () {
               showSearch(
                   context: context,
-                  delegate: StationSearch(stationsList));
+                  delegate: StationSearch(stationList));
             },
           )
         ],
