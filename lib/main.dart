@@ -148,20 +148,27 @@ class SplashPageState extends State<SplashPage> {
     getAllStations().then((stations) {
       // once the stations get fetched, the duplicate station names need to be assigned a direction
       Map<String, List<int>> stationMap = Map();
+      List<Map> removables = List();
       stationList = jsonDecode(stations.body)["data"];
       for (Map station in stationList) {
-        if (stationMap.containsKey(station["name"])) {
-          stationMap[station["name"]].add(int.parse(station["ref_id"]));
-        } else {
-          stationMap[station["name"]] = [int.parse(station["ref_id"])];
+        try {
+          if (stationMap.containsKey(station["name"])) {
+            stationMap[station["name"]].add(int.parse(station["ref_id"]));
+          } else {
+            stationMap[station["name"]] = [int.parse(station["ref_id"])];
+          }
+        } catch (_) {
+          // station is probably bad, nonexistent
+          removables.add(station);
         }
       }
+      stationList.removeWhere((station) => removables.contains(station));
       stationMap.removeWhere((stationName, stationIds) => stationIds.length < 2);
 
       stationMap.forEach((stationName, stationIds) {
         int stationId = stationIds.reduce(min);
         Map stationToChange = (stationList.where((station) => station["ref_id"] == stationId.toString())).first;
-        print(stationToChange);
+        stationList[stationList.indexOf(stationToChange)]["center"] = true;
       }
       );
 
@@ -477,10 +484,6 @@ class StationSearch extends SearchDelegate {
   StationSearch(this.stations);
   final List stations;
 
-  Future<http.Response> getStationById() {
-    return http.get("data.lpp.si/stations/getStationById");
-}
-
   @override
   String get searchFieldLabel => "Napišite ime postaje";
 
@@ -512,7 +515,15 @@ class StationSearch extends SearchDelegate {
         == query.toLowerCase());
     return ListView(
       children: results.map((station) => ListTile(
-        title: Text(station.toString()),
+        title: Text(station["name"]),
+        subtitle: station["center"] == true ? Text("V center") : Container(),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (BuildContext context) => StationPage(
+              station: station,
+            ))
+          );
+        },
       )).toList(),
     );
   }
@@ -523,8 +534,50 @@ class StationSearch extends SearchDelegate {
         query.toLowerCase()));
     return ListView(
       children: results.map((station) => ListTile(
-        title: Text(station.toString()),
+        title: Text(station["name"]),
+        subtitle: station["center"] == true ? Text("V center") : Container(),
+        onTap: () {
+          Navigator.of(context).push(
+              MaterialPageRoute(builder: (BuildContext context) => StationPage(
+                station: station,
+              ))
+          );
+        },
       )).toList(),
+    );
+  }
+}
+
+class StationPage extends StatelessWidget {
+  StationPage({Key key, this.station}): super(key: key);
+  final Map station;
+
+  Future<http.Response> getArrivalsOnStation(stationId) {
+    return http.get("http://data.lpp.si/timetables/getArrivalsOnStation?station_int_id=$stationId");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(station["name"]),
+      ),
+      body: FutureBuilder(
+        future: getArrivalsOnStation(station["int_id"].toString()),
+        builder: (BuildContext context, AsyncSnapshot snapshot) {
+          if (snapshot.hasData) {
+            List arrivals = jsonDecode(snapshot.data.body)["data"];
+            return ListView.builder(
+                itemCount: arrivals.length,
+                itemBuilder: (BuildContext context, int index) => ListTile(
+                  title: Text(arrivals[index].toString()),
+                )
+            );
+          } else {
+            return Center(child: CircularProgressIndicator());
+          }
+        },
+      ),
     );
   }
 }
