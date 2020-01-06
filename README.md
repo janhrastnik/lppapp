@@ -10,10 +10,9 @@ a predetermined timetable. Live bus arrivals are simultaneously searched for, bu
 api calls.
 
 ## Todo
-- [ ] Filter out bad/nonexistent routes
+- [x] Filter out bad/nonexistent routes
 - [ ] Route search 
-- [ ] Station search 
-- [ ] better route naming
+- [x] Station search 
 - [ ] show alternative routes on station
 - [ ] testing
 - [ ] optional notifications
