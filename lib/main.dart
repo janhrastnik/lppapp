@@ -171,8 +171,6 @@ class SplashPageState extends State<SplashPage> {
         stationList[stationList.indexOf(stationToChange)]["center"] = true;
       }
       );
-
-      print(stationMap);
     });
     getData().then((data) {
       if (data == null) {
@@ -516,6 +514,7 @@ class StationSearch extends SearchDelegate {
     return ListView(
       children: results.map((station) => ListTile(
         title: Text(station["name"]),
+        trailing: Text(station["ref_id"].toString(), style: TextStyle(color: Colors.grey),),
         subtitle: station["center"] == true ? Text("V center") : Container(),
         onTap: () {
           Navigator.of(context).push(
@@ -535,6 +534,7 @@ class StationSearch extends SearchDelegate {
     return ListView(
       children: results.map((station) => ListTile(
         title: Text(station["name"]),
+        trailing: Text(station["ref_id"].toString(), style: TextStyle(color: Colors.grey),),
         subtitle: station["center"] == true ? Text("V center") : Container(),
         onTap: () {
           Navigator.of(context).push(
@@ -553,7 +553,7 @@ class StationPage extends StatelessWidget {
   final Map station;
 
   Future<http.Response> getArrivalsOnStation(stationId) {
-    return http.get("http://data.lpp.si/timetables/getArrivalsOnStation?station_int_id=$stationId");
+    return http.get("https://www.lpp.si/lpp/ajax/1/$stationId");
   }
 
   @override
@@ -563,16 +563,53 @@ class StationPage extends StatelessWidget {
         title: Text(station["name"]),
       ),
       body: FutureBuilder(
-        future: getArrivalsOnStation(station["int_id"].toString()),
+        future: getArrivalsOnStation(station["ref_id"].toString()),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           if (snapshot.hasData) {
-            List arrivals = jsonDecode(snapshot.data.body)["data"];
-            return ListView.builder(
-                itemCount: arrivals.length,
-                itemBuilder: (BuildContext context, int index) => ListTile(
-                  title: Text(arrivals[index].toString()),
-                )
-            );
+            List arrivals = jsonDecode(snapshot.data.body);
+            Map<String, List> arrivalsMap = Map();
+            arrivals.forEach((arrivalGroup) {
+              (arrivalGroup as List).forEach((arrival) {
+                print(arrival.toString());
+                if (arrivalsMap.keys.contains(arrival["key"].toString())) {
+                  print("yes");
+                  arrivalsMap[arrival["key"].toString()].add(arrival["time"]);
+                } else {
+                  arrivalsMap[arrival["key"].toString()] = [arrival["time"]];
+                }
+              });
+            });
+            return arrivals.isNotEmpty ? ListView.separated(
+              itemCount: arrivalsMap.length,
+              itemBuilder: (BuildContext context, int index) => Row(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Container(
+                      width: 30.0,
+                      height: 30.0,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(5.0),
+                        color: Colors.green,
+                      ),
+                      child: Center(child: Text(arrivalsMap.keys.toList()[index],
+                          style: TextStyle(color: Colors.white), textAlign: TextAlign.center)),
+                    ),
+                  ),
+                  Wrap(
+                    direction: Axis.horizontal,
+                    children: arrivalsMap.values.toList()[index].map<Widget>((arrival) => Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(6.0),
+                        child: Text(arrival.toString(), style: TextStyle(fontSize: 16.0),),
+                      ),
+                    )).toList(),
+                  )
+                ],
+              ),
+              separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black38),
+            ) : Center(child: Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.",
+              textAlign: TextAlign.center));
           } else {
             return Center(child: CircularProgressIndicator());
           }
