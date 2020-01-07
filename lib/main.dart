@@ -475,7 +475,7 @@ class RouteTitle extends StatelessWidget {
 String getNumber(String routeGroupNumber, String routeName) {
   RegExp reg = RegExp(r"^[A-Z] ");
   RegExpMatch matches = reg.firstMatch(routeName);
-  return matches != null ? routeGroupNumber + matches.group(0) : routeGroupNumber;
+  return matches != null ? (routeGroupNumber + matches.group(0)).trimRight() : routeGroupNumber;
 }
 
 class StationSearch extends SearchDelegate {
