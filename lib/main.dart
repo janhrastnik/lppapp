@@ -257,7 +257,7 @@ class RouteList extends StatelessWidget {
             ).toList(),
             );
           }
-              
+
       )
     );
   }
@@ -320,94 +320,17 @@ class RouteDisplay extends StatelessWidget {
     return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
   }
 
-  Future<http.Response> getArrivalsOnStation(stationId, routeId) {
-    return http.get("http://data.lpp.si/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
-  }
-
-  Future<http.Response> getLiveBusArrival(stationId) {
-    return http.get("http://data.lpp.si/timetables/liveBusArrival?station_int_id=$stationId");
-  }
-
-  void _showDialog(stationId, routeId, context) {
+  void _showDialog(stationId, routeId, routeGroupNumber, context) {
     showDialog(
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
               title: Text("Prihajajoči prihodi"),
-              content: FutureBuilder(
-                  future: Future.wait([
-                    getArrivalsOnStation(stationId, routeId),
-                    getLiveBusArrival(stationId)
-                  ]),
-                  builder: (BuildContext context, AsyncSnapshot snapshot) {
-                    try {
-                      if (snapshot.hasData) {
-                        List timetable = jsonDecode(snapshot.data[0].body)["data"];
-                        //TODO: REMOVE OTHER ROUTES FROM LIVEARRIVALS!!!!
-                        List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
-                        liveArrivals.removeWhere((e) => e["route_number"].toString() != routeGroupNumber);
-
-                        // TODO: set time to local
-                        for (Map arrival in timetable) {
-                          DateTime estimatedDate = DateTime.parse(arrival["arrival_time"]);
-                          arrival["arrival_time"] = estimatedDate.toLocal()
-                              .subtract(Duration(hours: 1)).toIso8601String();
-                        }
-                        if (liveArrivals.isNotEmpty) {
-                          for (Map arrival in liveArrivals) {
-                            List<List> diffs = List();
-                            DateTime arrivalDate = DateTime.now().add(Duration(minutes: arrival["eta"]));
-                            for (Map date in timetable) {
-                              DateTime estimatedDate = DateTime.parse(
-                                  date["arrival_time"]);
-                              List entry = [timetable.indexOf(date), arrivalDate.difference(estimatedDate)];
-                              diffs.add(entry);
-                            }
-                            diffs.sort((a, b) => a[1].abs().compareTo(b[1].abs()));
-                            // first value in diffs is the most probable timetable correlation
-                            List valueToChange = diffs.first;
-                            timetable[valueToChange[0]]["arrival_time"] = arrivalDate.toIso8601String();
-                            // if this is the first live arrival, remove all timetable entries up to the live arrival
-                            if (liveArrivals.indexOf(arrival) == 0) {
-                              timetable = timetable.sublist(valueToChange[0]);
-                            }
-                          }
-                        } else {
-                          timetable.removeWhere((e) => DateTime.now().isAfter(
-                              DateTime.parse(e["arrival_time"]).toLocal()
-                          ));
-                        }
-                        return Container(
-                          width: double.maxFinite,
-                          child: ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: timetable.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                Duration dur;
-
-                                // set dur, increase dur by 1 to accommodate for seconds difference
-                                dur = DateTime.parse(timetable[index]["arrival_time"])
-                                    .add(Duration(minutes: 1))
-                                    .difference(DateTime.now());
-
-                                return ListTile(
-                                  leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
-                                      [HH, ':', nn]), overflow: TextOverflow.ellipsis,
-                                  ),
-                                  trailing: Text("čez ${dur.inHours > 0 ? dur.inHours.toString() + " h in " : ""}"
-                                      "${dur.inMinutes - dur.inHours * 60} min", overflow: TextOverflow.ellipsis,),
-                                );
-                              }
-                          ),
-                        );
-                    } else {
-                      return Center(child: CircularProgressIndicator());
-                      }
-                    } catch(err) {
-                      print(err);
-                      return Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
-                    }
-                  })
+              content: Arrivals(
+                stationId: stationId,
+                routeId: routeId,
+                routeGroupNumber: routeGroupNumber,
+              )
           );
         });
   }
@@ -429,7 +352,7 @@ class RouteDisplay extends StatelessWidget {
                       itemBuilder: (BuildContext context, int index) => ListTile(
                         title: Text(stationsList[index]["name"]),
                         onTap: () {
-                            _showDialog(stationsList[index]["int_id"], id, context);
+                            _showDialog(stationsList[index]["int_id"], id, routeGroupNumber, context);
                         },
                       )
                   ),
@@ -441,6 +364,114 @@ class RouteDisplay extends StatelessWidget {
           }
         }
     );
+  }
+}
+
+class Arrivals extends StatefulWidget {
+  Arrivals({this.stationId, this.routeId, this.routeGroupNumber});
+  final int routeId;
+  final int stationId;
+  final String routeGroupNumber;
+
+  ArrivalsState createState() => ArrivalsState();
+}
+
+class ArrivalsState extends State<Arrivals> {
+
+  Future<http.Response> getArrivalsOnStation(stationId, routeId) {
+    return http.get("http://data.lpp.si/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
+  }
+
+  Future<http.Response> getLiveBusArrival(stationId) {
+    return http.get("http://data.lpp.si/timetables/liveBusArrival?station_int_id=$stationId");
+  }
+
+  Future<void> getArrivals() async {
+    setState(() {
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: Future.wait([
+          getArrivalsOnStation(widget.stationId, widget.routeId),
+          getLiveBusArrival(widget.stationId)
+        ]),
+        builder: (BuildContext context, AsyncSnapshot snapshot) {
+          try {
+            if (snapshot.hasData) {
+              List timetable = jsonDecode(snapshot.data[0].body)["data"];
+              //TODO: REMOVE OTHER ROUTES FROM LIVEARRIVALS!!!!
+              List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
+              liveArrivals.removeWhere((e) => e["route_number"].toString() != widget.routeGroupNumber);
+
+              // TODO: set time to local
+              for (Map arrival in timetable) {
+                DateTime estimatedDate = DateTime.parse(arrival["arrival_time"]);
+                arrival["arrival_time"] = estimatedDate.toLocal()
+                    .subtract(Duration(hours: 1)).toIso8601String();
+              }
+              if (liveArrivals.isNotEmpty) {
+                for (Map arrival in liveArrivals) {
+                  List<List> diffs = List();
+                  DateTime arrivalDate = DateTime.now().add(Duration(minutes: arrival["eta"]));
+                  for (Map date in timetable) {
+                    DateTime estimatedDate = DateTime.parse(
+                        date["arrival_time"]);
+                    List entry = [timetable.indexOf(date), arrivalDate.difference(estimatedDate)];
+                    diffs.add(entry);
+                  }
+                  diffs.sort((a, b) => a[1].abs().compareTo(b[1].abs()));
+                  // first value in diffs is the most probable timetable correlation
+                  List valueToChange = diffs.first;
+                  timetable[valueToChange[0]]["arrival_time"] = arrivalDate.toIso8601String();
+                  // if this is the first live arrival, remove all timetable entries up to the live arrival
+                  if (liveArrivals.indexOf(arrival) == 0) {
+                    timetable = timetable.sublist(valueToChange[0]);
+                  }
+                }
+              } else {
+                timetable.removeWhere((e) => DateTime.now().isAfter(
+                    DateTime.parse(e["arrival_time"]).toLocal()
+                ));
+              }
+              return Container(
+                width: double.maxFinite,
+                child: RefreshIndicator(
+                  onRefresh: () {
+                    return getArrivals();
+                  },
+                  child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: timetable.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        Duration dur;
+
+                        // set dur, increase dur by 1 to accommodate for seconds difference
+                        dur = DateTime.parse(timetable[index]["arrival_time"])
+                            .add(Duration(minutes: 1))
+                            .difference(DateTime.now());
+
+                        return ListTile(
+                          leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
+                              [HH, ':', nn]), overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Text("čez ${dur.inHours > 0 ? dur.inHours.toString() + " h in " : ""}"
+                              "${dur.inMinutes - dur.inHours * 60} min", overflow: TextOverflow.ellipsis,),
+                        );
+                      }
+                  ),
+                ),
+              );
+            } else {
+              return Center(child: CircularProgressIndicator());
+            }
+          } catch(err) {
+            print(err);
+            return Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.");
+          }
+        });
   }
 }
 
@@ -570,16 +601,20 @@ class StationPage extends StatelessWidget {
             Map<String, List> arrivalsMap = Map();
             arrivals.forEach((arrivalGroup) {
               (arrivalGroup as List).forEach((arrival) {
-                print(arrival.toString());
                 if (arrivalsMap.keys.contains(arrival["key"].toString())) {
-                  print("yes");
                   arrivalsMap[arrival["key"].toString()].add(arrival["time"]);
                 } else {
                   arrivalsMap[arrival["key"].toString()] = [arrival["time"]];
                 }
               });
             });
-            return arrivals.isNotEmpty ? ListView.separated(
+            return arrivals.isNotEmpty ? RefreshIndicator(
+                onRefresh: () {
+                  return Navigator.of(context).pushReplacement(MaterialPageRoute(
+                      builder: (BuildContext context) => StationPage(station: station)
+                  ));
+                },
+                child: ListView.separated(
               itemCount: arrivalsMap.length,
               itemBuilder: (BuildContext context, int index) => Row(
                 children: <Widget>[
@@ -596,19 +631,20 @@ class StationPage extends StatelessWidget {
                           style: TextStyle(color: Colors.white), textAlign: TextAlign.center)),
                     ),
                   ),
-                  Wrap(
-                    direction: Axis.horizontal,
-                    children: arrivalsMap.values.toList()[index].map<Widget>((arrival) => Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(6.0),
-                        child: Text(arrival.toString(), style: TextStyle(fontSize: 16.0),),
-                      ),
-                    )).toList(),
+                  Expanded(
+                    child: Wrap(
+                      children: arrivalsMap.values.toList()[index].map<Widget>((arrival) => Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(6.0),
+                          child: Text(arrival.toString(), style: TextStyle(fontSize: 16.0),),
+                        ),
+                      )).toList(),
+                    ),
                   )
                 ],
               ),
               separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black38),
-            ) : Center(child: Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.",
+            )) : Center(child: Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.",
               textAlign: TextAlign.center));
           } else {
             return Center(child: CircularProgressIndicator());
