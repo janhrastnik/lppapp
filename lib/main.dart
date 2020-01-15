@@ -8,6 +8,7 @@ import 'package:date_format/date_format.dart';
 import 'dart:math';
 
 void main() => runApp(MyApp());
+String site = "http://194.33.12.24";
 List stationList;
 
 class MyApp extends StatelessWidget {
@@ -33,15 +34,15 @@ class SplashPageState extends State<SplashPage> {
   Map<String, List> routeGroups = Map();
 
   Future<http.Response> getRouteGroups() {
-    return http.get("http://data.lpp.si/routes/getRouteGroups");
+    return http.get("$site/routes/getRouteGroups");
   }
 
   Future<http.Response> getRoutes(routeNumber) {
-    return http.get("http://data.lpp.si/routes/getRoutes?route_name=$routeNumber");
+    return http.get("$site/routes/getRoutes?route_name=$routeNumber");
   }
 
   Future<http.Response> getAllStations() {
-    return http.get("http://data.lpp.si/stations/getAllStations");
+    return http.get("$site/stations/getAllStations");
   }
 
   // if the app has no internet connection
@@ -317,7 +318,7 @@ class RouteDisplay extends StatelessWidget {
   final String routeGroupNumber;
 
   Future<http.Response> getStations(id) {
-    return http.get("http://data.lpp.si/routes/getStationsOnRoute?route_int_id=$id");
+    return http.get("$site/routes/getStationsOnRoute?route_int_id=$id");
   }
 
   void _showDialog(stationId, routeId, routeGroupNumber, context) {
@@ -379,11 +380,11 @@ class Arrivals extends StatefulWidget {
 class ArrivalsState extends State<Arrivals> {
 
   Future<http.Response> getArrivalsOnStation(stationId, routeId) {
-    return http.get("http://data.lpp.si/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
+    return http.get("$site/timetables/getArrivalsOnStation?station_int_id=$stationId&route_int_id=$routeId");
   }
 
   Future<http.Response> getLiveBusArrival(stationId) {
-    return http.get("http://data.lpp.si/timetables/liveBusArrival?station_int_id=$stationId");
+    return http.get("$site/timetables/liveBusArrival?station_int_id=$stationId");
   }
 
   Future<void> getArrivals() async {
@@ -480,7 +481,7 @@ class RouteTitle extends StatelessWidget {
   final int id;
 
   Future<http.Response> getRouteDetails(id) {
-    return http.get("http://data.lpp.si/routes/getRouteDetails?route_int_id=$id");
+    return http.get("$site/routes/getRouteDetails?route_int_id=$id");
   }
 
   @override
