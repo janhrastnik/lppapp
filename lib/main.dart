@@ -227,8 +227,9 @@ class RouteList extends StatelessWidget {
           )
         ],
       ),
-      body: ListView.builder(
+      body: ListView.separated(
           itemCount: routes.length,
+          separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black26, height: 0.0),
           itemBuilder: (BuildContext context, int index) {
             String routeGroupNumber = routes.keys.toList()[index];
             List routeNames = routes[routeGroupNumber];
@@ -250,6 +251,7 @@ class RouteList extends StatelessWidget {
                     builder: (BuildContext context) => Route(
                       routeId: route[1],
                       oppositeRouteId: route[2],
+                      routeNumber: getNumber(routeGroupNumber, route[0]),
                       routeGroupNumber: routeGroupNumber,
                     )
                   ));
@@ -265,11 +267,12 @@ class RouteList extends StatelessWidget {
 }
 
 class Route extends StatelessWidget {
-  Route({Key key, this.routeId, this.oppositeRouteId, this.routeGroupNumber}) : super(key: key);
+  Route({Key key, this.routeId, this.oppositeRouteId, this.routeGroupNumber, this.routeNumber}) : super(key: key);
 
   final int routeId;
   final int oppositeRouteId;
   final String routeGroupNumber;
+  final String routeNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -299,8 +302,8 @@ class Route extends StatelessWidget {
               Expanded(
                   child: Row(
                     children: <Widget>[
-                      Flexible(child: RouteDisplay(id: routeId, routeGroupNumber: routeGroupNumber)),
-                      Flexible(child: RouteDisplay(id: oppositeRouteId, routeGroupNumber: routeGroupNumber))
+                      Flexible(child: RouteDisplay(id: routeId, routeGroupNumber: routeGroupNumber, routeNumber: routeNumber)),
+                      Flexible(child: RouteDisplay(id: oppositeRouteId, routeGroupNumber: routeGroupNumber, routeNumber: routeNumber))
                     ],
                   )
               )],
@@ -313,24 +316,26 @@ class Route extends StatelessWidget {
 }
 
 class RouteDisplay extends StatelessWidget {
-  RouteDisplay({Key key, this.id, this.routeGroupNumber}) : super(key: key);
+  RouteDisplay({Key key, this.id, this.routeGroupNumber, this.routeNumber}) : super(key: key);
   final int id;
   final String routeGroupNumber;
+  final String routeNumber;
 
   Future<http.Response> getStations(id) {
     return http.get("$site/routes/getStationsOnRoute?route_int_id=$id");
   }
 
-  void _showDialog(stationId, routeId, routeGroupNumber, context) {
+  void _showDialog(stationId, routeId, routeGroupNumber, stationName, context) {
     showDialog(
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-              title: Text("Prihajajoči prihodi"),
+              title: Text("$stationName prihodi"),
               content: Arrivals(
                 stationId: stationId,
                 routeId: routeId,
                 routeGroupNumber: routeGroupNumber,
+                routeNumber: routeNumber
               )
           );
         });
@@ -347,13 +352,14 @@ class RouteDisplay extends StatelessWidget {
             return Column(
               children: <Widget>[
                 Expanded(
-                  child: ListView.builder(
+                  child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: stationsList.length,
+                      separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black26, height: 0.0),
                       itemBuilder: (BuildContext context, int index) => ListTile(
                         title: Text(stationsList[index]["name"]),
                         onTap: () {
-                            _showDialog(stationsList[index]["int_id"], id, routeGroupNumber, context);
+                            _showDialog(stationsList[index]["int_id"], id, routeGroupNumber, stationsList[index]["name"], context);
                         },
                       )
                   ),
@@ -369,10 +375,11 @@ class RouteDisplay extends StatelessWidget {
 }
 
 class Arrivals extends StatefulWidget {
-  Arrivals({this.stationId, this.routeId, this.routeGroupNumber});
+  Arrivals({this.stationId, this.routeId, this.routeGroupNumber, this.routeNumber});
   final int routeId;
   final int stationId;
   final String routeGroupNumber;
+  final String routeNumber;
 
   ArrivalsState createState() => ArrivalsState();
 }
@@ -405,7 +412,11 @@ class ArrivalsState extends State<Arrivals> {
               List timetable = jsonDecode(snapshot.data[0].body)["data"];
               //TODO: REMOVE OTHER ROUTES FROM LIVEARRIVALS!!!!
               List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
-              liveArrivals.removeWhere((e) => e["route_number"].toString() != widget.routeGroupNumber);
+              print(liveArrivals.toString());
+              print("route group number is ${widget.routeGroupNumber}");
+              liveArrivals.removeWhere((e) => e["route_number"] != widget.routeGroupNumber);
+              // liveArrivals.forEach((e) => print(getNumber(widget.routeGroupNumber, e["route_name"].toString())));
+              liveArrivals.removeWhere((e) => getNumber(widget.routeGroupNumber, e["route_name"]) != widget.routeNumber);
 
               // TODO: set time to local
               for (Map arrival in timetable) {
@@ -443,9 +454,10 @@ class ArrivalsState extends State<Arrivals> {
                   onRefresh: () {
                     return getArrivals();
                   },
-                  child: ListView.builder(
+                  child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: timetable.length,
+                      separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black26),
                       itemBuilder: (BuildContext context, int index) {
                         Duration dur;
 
@@ -453,7 +465,6 @@ class ArrivalsState extends State<Arrivals> {
                         dur = DateTime.parse(timetable[index]["arrival_time"])
                             .add(Duration(minutes: 1))
                             .difference(DateTime.now());
-
                         return ListTile(
                           leading: Text(formatDate(DateTime.parse(timetable[index]["arrival_time"]),
                               [HH, ':', nn]), overflow: TextOverflow.ellipsis,
@@ -644,7 +655,7 @@ class StationPage extends StatelessWidget {
                   )
                 ],
               ),
-              separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black38),
+              separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black26),
             )) : Center(child: Text("Prihodi za dano postajo niso bili najdeni. Linija morda danes ne vozi.",
               textAlign: TextAlign.center));
           } else {
