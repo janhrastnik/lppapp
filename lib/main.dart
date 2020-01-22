@@ -81,20 +81,20 @@ class SplashPageState extends State<SplashPage> {
       return Future.wait(
           routeGroupsList.map((e) => getRoutes(e["name"]))
       );
-    } catch (_) {
-      print("err");
+    } catch (_) { // goal is to catch no connection error
+      _showErrDialog(context);
+      return null;
     }
   }
 
   // filters out bad routes
   Map routeFilter(Map<String, List> routes) {
-    // TODO: obvozi, unique n-routi
     routes.removeWhere((key, value) => value.isEmpty);
 
-    for (String key in routes.keys) {
+    Map<String, List> routeMap = Map();
+    routes.forEach((routeGroupNumber, routeGroup) {
       List removables = [];
-
-      routes[key].forEach((route) {
+      routeGroup.forEach((route) {
         try {
           if (route[1] < route[2]) {
             removables.add(route);
@@ -106,12 +106,10 @@ class SplashPageState extends State<SplashPage> {
           removables.add(route);
         }
       });
-
-      routes[key].removeWhere((e) => removables.contains(e));
-    }
+      routeGroup.removeWhere((route) => removables.contains(route));
+    });
 
     // find identical routes, TODO: join this with upper code
-    Map<String, List> routeMap = Map();
     routes.forEach((routeGroupNumber, routeGroup) {
       routeGroup.forEach((route) {
         if (routeMap.keys.contains(route[0])) {
@@ -174,19 +172,15 @@ class SplashPageState extends State<SplashPage> {
       );
     });
     getData().then((data) {
-      if (data == null) {
-        _showErrDialog(context);
-      } else {
-        data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
-            jsonDecode(e.body)["data"].forEach((e) =>
-                // TODO: change this into a map
-                routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
-        routeGroups = routeFilter(routeGroups);
-        SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
-        Navigator.of(context).pushReplacement(MaterialPageRoute(
-            builder: (BuildContext context) => RouteList(routes: routes)
-        ));
-      }
+      data.where((e) => jsonDecode(e.body)["data"].length != 0).forEach((e) =>
+          jsonDecode(e.body)["data"].forEach((e) =>
+              // TODO: change this into a map
+              routeGroups[e["group_name"]].add([e["parent_name"], e["int_id"], e["opposite_route_int_id"], e["route_name"]])));
+      routeGroups = routeFilter(routeGroups);
+      SplayTreeMap routes = SplayTreeMap.from(routeGroups, (a, b) => collection.compareNatural(a, b));
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+          builder: (BuildContext context) => RouteList(routes: routes)
+      ));
     });
   }
 
@@ -412,11 +406,14 @@ class ArrivalsState extends State<Arrivals> {
               List timetable = jsonDecode(snapshot.data[0].body)["data"];
               //TODO: REMOVE OTHER ROUTES FROM LIVEARRIVALS!!!!
               List liveArrivals = jsonDecode(snapshot.data[1].body)["data"];
-              print(liveArrivals.toString());
-              print("route group number is ${widget.routeGroupNumber}");
-              liveArrivals.removeWhere((e) => e["route_number"] != widget.routeGroupNumber);
-              // liveArrivals.forEach((e) => print(getNumber(widget.routeGroupNumber, e["route_name"].toString())));
+              liveArrivals.removeWhere((e) => e["route_number"].toString() != widget.routeGroupNumber);
+              print(liveArrivals);
+              liveArrivals.forEach((e) => print(getNumber(widget.routeGroupNumber, e["route_name"].toString())));
               liveArrivals.removeWhere((e) => getNumber(widget.routeGroupNumber, e["route_name"]) != widget.routeNumber);
+              print(liveArrivals);
+              timetable.sort((a, b) {
+                return DateTime.parse(a["arrival_time"]).compareTo(DateTime.parse(b["arrival_time"]));
+              });
 
               // TODO: set time to local
               for (Map arrival in timetable) {
