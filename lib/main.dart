@@ -1,12 +1,8 @@
-import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:collection/collection.dart' as collection;
 import 'package:flutter/services.dart';
-import 'package:date_format/date_format.dart';
 import 'dart:math';
-import 'package:beautifulsoup/beautifulsoup.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:html/parser.dart' as htmlParser;
 import 'package:html/dom.dart' show Document;
@@ -120,16 +116,33 @@ class SplashPageState extends State<SplashPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: Colors.green,
-        body: WebView(
-          initialUrl: "https://www.lpp.si",
-          javascriptMode: JavascriptMode.unrestricted,
-          onWebViewCreated: (WebViewController c) {
-            controller = c;
-          },
-          onPageFinished: (_) {
-            getData(controller);
-          },
+        body: Stack(
+          children: <Widget>[
+            WebView(
+              initialUrl: "https://www.lpp.si",
+              javascriptMode: JavascriptMode.unrestricted,
+              onWebViewCreated: (WebViewController c) {
+                controller = c;
+              },
+              onPageFinished: (_) {
+                getData(controller);
+              },
+            ),
+            Container(
+              color: Colors.green,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Image.asset("assets/bus.png"),
+                  CircularProgressIndicator(backgroundColor: Colors.white),
+                ],
+              ),
+            )
+          ],
         )
     );
   }
@@ -206,7 +219,7 @@ class Route extends StatelessWidget {
             List data = jsonDecode(snapshot.data.body);
             return ListView.separated(
                 itemCount: data.length,
-                separatorBuilder: (BuildContext, int index) => Divider(color: Colors.black26),
+                separatorBuilder: (BuildContext context, int index) => Divider(color: Colors.black26),
                 itemBuilder: (BuildContext context, int index) => Row(
                   children: <Widget>[
                     Padding(padding: EdgeInsets.only(left: 8.0), child: Text(data[index]["name"], style: TextStyle(
