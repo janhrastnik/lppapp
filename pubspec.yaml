@@ -25,6 +25,9 @@ dependencies:
   cupertino_icons: ^0.1.2
   http: ^0.12.0+2
   date_format: ^1.0.8
+  beautifulsoup: ^0.0.1
+  webview_flutter: ^0.3.19+5
+
 
 dev_dependencies:
   flutter_test:
