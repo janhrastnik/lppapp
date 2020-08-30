@@ -9,7 +9,7 @@ Webscrapes lpp.si via a webview and some js code.
 ## Todo
 - [x] Filter out bad/nonexistent routes
 - [x] Station search 
-- [ ] show alternative routes on station
+- [x] show alternative routes on station
 - [ ] testing
 - [ ] optional notifications
 - [ ] theming
